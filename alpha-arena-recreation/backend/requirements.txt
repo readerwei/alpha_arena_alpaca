@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pandas
+httpx
+python-dotenv
+yfinance
+pandas-ta
+alpaca-py
