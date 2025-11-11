@@ -87,11 +87,11 @@ python debug_engine.py
 - **Documentation**: Keep docstrings up to date for all public classes/functions. When prompt shape changes, mirror it in `execution_flow.md`.
 
 ## Testing & Validation Expectations
-- No formal suite exists; rely on:
-  - `python debug_engine.py` for end-to-end agent cycle.
-  - Manual `curl http://localhost:8000/api/v1/agents` to inspect serialized state.
-  - Temporary instrumentation/log prints are acceptable but remove before merge unless they provide persistent value.
-- If you introduce new calculators/providers, add deterministic unit tests (pytest) under `alpha-arena-recreation/backend/tests/` and wire them into this doc.
+- Backend unit tests live in `alpha-arena-recreation/backend/tests`; run them with `pytest`.
+- Always smoke test the trading loop via `python debug_engine.py` after touching agent logic.
+- Hit `curl http://localhost:8000/api/v1/agents` (or the Swagger UI) while the server runs to sanity-check serialized state.
+- Temporary instrumentation/log prints are acceptable during debugging but remove them before merging unless they provide lasting value.
+- When adding new calculators/providers, extend the pytest suite so deterministic behaviors (mocked data, provider fallbacks) stay covered.
 
 ## Open Gaps / Notes for Future Work
 - Frontend directory is empty; any new UI scaffolding should live in `alpha-arena-recreation/frontend`.

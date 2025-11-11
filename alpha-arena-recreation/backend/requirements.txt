@@ -6,3 +6,4 @@ python-dotenv
 yfinance
 pandas-ta
 alpaca-py
+pytest
