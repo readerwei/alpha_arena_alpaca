@@ -4,15 +4,21 @@ from app.alpaca.client import alpaca_client
 from alpaca.trading.enums import OrderSide
 import numpy as np
 from typing import Optional, Dict
+from app.storage.exit_plan_store import ExitPlanStore
 
 
 class Portfolio:
-    def __init__(self, initial_cash: float = 10000.0):
+    def __init__(
+        self,
+        initial_cash: float = 10000.0,
+        exit_plan_store: Optional[ExitPlanStore] = None,
+    ):
         self.initial_cash = initial_cash
         self.cash = initial_cash  # This will eventually come from Alpaca account
         self.trade_history: list[Trade] = []
         self.pnl_history = [0.0]  # To calculate Sharpe Ratio
-        self.exit_plans: Dict[str, ExitPlan] = {}  # Store exit plans separately
+        self.exit_plan_store = exit_plan_store or ExitPlanStore()
+        self.exit_plans: Dict[str, ExitPlan] = self.exit_plan_store.load()
 
     async def execute_trade(
         self,
@@ -38,6 +44,7 @@ class Portfolio:
                 # Store exit plan if provided
                 if exit_plan:
                     self.exit_plans[symbol] = exit_plan
+                    self.exit_plan_store.save(self.exit_plans)
             else:
                 print(f"Failed to submit BUY order for {symbol}.")
 
@@ -61,6 +68,7 @@ class Portfolio:
                         # If position is fully closed, remove exit plan
                         if float(current_alpaca_position.qty) == quantity:
                             self.exit_plans.pop(symbol, None)
+                            self.exit_plan_store.save(self.exit_plans)
                     else:
                         print(f"Failed to submit SELL order for {symbol}.")
                 else:

@@ -28,10 +28,12 @@ ALPACA_API_KEY_ID=your_paper_key
 ALPACA_SECRET_KEY=your_paper_secret
 TRADE_SYMBOLS=AAPL,NVDA,AMD  # optional override via code if needed
 LOOP_INTERVAL_SECONDS=300    # optional override via code if needed
+EXIT_PLAN_CSV_PATH=exit_plans.csv  # optional: persistent store for exit plans
 ```
 - The Alpaca client is instantiated at import time; missing keys raise immediately (`app/alpaca/client.py`). Set valid paper keys before starting anything.
 - When `LLM_PROVIDER=ollama`, make sure the referenced model is pulled and the server reachable; otherwise stick with `mock` during development.
 - yfinance requests hit the public Yahoo Finance API; if offline, expect empty datasets and guard accordingly.
+- Exit plans persist to the CSV path above; tweak it before restarting if you want to hand-edit targets/stop losses.
 
 ## Backend Workflow & Commands
 All commands below assume the working directory `alpha-arena-recreation/backend`.
@@ -58,7 +60,8 @@ python debug_engine.py
 - Useful to validate prompt payloads, Alpaca interactions, and `LLMTradeDecision` parsing quickly.
 
 ### Tests / lint
-- No automated tests yet. When you add features, include lightweight scripts or pytest scaffolding; at minimum, run `python debug_engine.py` and hit `/api/v1/agents`.
+- `pytest` exercises backend units (`alpha-arena-recreation/backend/tests`).
+- Still run `python debug_engine.py` and hit `/api/v1/agents` for smoke coverage after heavy changes.
 
 ## Execution Flow (what the engine actually does)
 1. **Startup** (`TradingEngine.__init__`): builds one or more `Agent` instances based on `LLM_PROVIDER`. Ollama mode registers a single named agent; mock mode registers two preconfigured mocks.
@@ -72,6 +75,7 @@ python debug_engine.py
    - `OllamaProvider` POSTs to `/api/generate`, asks for JSON, strips code fences, and validates with Pydantic. Errors fall back to a `hold`.
 5. **Trade execution**:
    - All trades route through `Portfolio.execute_trade`, which hits Alpaca’s paper API immediately. Exit plans (profit target/stop loss) are stored per symbol and re-evaluated each cycle.
+   - Exit plans are mirrored into the CSV store so restarts and manual edits carry forward.
    - Portfolio stats recompute via live Alpaca account + yfinance quotes for valuation.
 6. **API exposure**: endpoint consumers get serialized `AgentState` snapshots (portfolio + trade history) and engine status toggles.
 

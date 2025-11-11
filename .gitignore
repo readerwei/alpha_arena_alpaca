@@ -130,6 +130,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+exit_plans.csv
 
 # Temporary files
 *.tmp
