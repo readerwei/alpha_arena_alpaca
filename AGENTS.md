@@ -109,5 +109,8 @@ python debug_engine.py
 - Consider providing a mock Alpaca implementation for offline development; right now missing keys hard-stop the app.
 - Network dependencies (yfinance, Ollama) can throttle CI. For pipelines, inject cached data or feature flags to short-circuit external calls.
 - Build artifacts (`venv/`, `backend.log`) should stay untracked; do not edit inside `venv`.
+- Ollama must return a JSON object containing a `decisions` list. If you see `{"error": "Please provide the JSON data as a string..."}`, adjust the prompt/output format so the server emits raw JSON text (no Python dict repr or code fences).
+- When calling a host-level Ollama server from the dev shell, set `OLLAMA_URL` to a reachable address (e.g., `http://host.docker.internal:11434`) and validate with `curl $OLLAMA_URL/api/tags` from inside the repo before running `debug_engine.py`.
+- Large Ollama models can exceed the CLI command timeout. Use `LLM_PROVIDER=mock` or a smaller model for quick diagnostics, or restart the Codex CLI with a higher timeout when you need full-length runs.
 
 Keep this file current—update commands, architecture notes, and coding expectations whenever the repo evolves.
