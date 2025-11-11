@@ -24,16 +24,22 @@ Create `alpha-arena-recreation/backend/.env` (dotenv loaded in `app/config.py`):
 LLM_PROVIDER=mock            # or ollama
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3:4b
+OLLAMA_TIMEOUT_SECONDS=10      # HTTP timeout when calling Ollama
 ALPACA_API_KEY_ID=your_paper_key
 ALPACA_SECRET_KEY=your_paper_secret
 TRADE_SYMBOLS=AAPL,NVDA,AMD  # optional override via code if needed
 LOOP_INTERVAL_SECONDS=300    # optional override via code if needed
 EXIT_PLAN_CSV_PATH=exit_plans.csv  # optional: persistent store for exit plans
+USE_MOCK_ALPACA=true        # set false to hit the real Alpaca API
+USE_MOCK_MARKET_DATA=true   # set false to pull from yfinance
 ```
 - The Alpaca client is instantiated at import time; missing keys raise immediately (`app/alpaca/client.py`). Set valid paper keys before starting anything.
 - When `LLM_PROVIDER=ollama`, make sure the referenced model is pulled and the server reachable; otherwise stick with `mock` during development.
 - yfinance requests hit the public Yahoo Finance API; if offline, expect empty datasets and guard accordingly.
 - Exit plans persist to the CSV path above; tweak it before restarting if you want to hand-edit targets/stop losses.
+- `LLM_PROVIDER` should remain `mock` unless you have an Ollama instance running at `OLLAMA_URL`.
+- `USE_MOCK_ALPACA` defaults to `true` so you can run the engine offline; set it to `false` (with valid keys) for live paper trading.
+- `USE_MOCK_MARKET_DATA` avoids yfinance calls in sandboxed environments; turn it off once you have network access.
 
 ## Backend Workflow & Commands
 All commands below assume the working directory `alpha-arena-recreation/backend`.
@@ -76,6 +82,7 @@ python debug_engine.py
 5. **Trade execution**:
    - All trades route through `Portfolio.execute_trade`, which hits Alpaca’s paper API immediately. Exit plans (profit target/stop loss) are stored per symbol and re-evaluated each cycle.
    - Exit plans are mirrored into the CSV store so restarts and manual edits carry forward.
+   - When `USE_MOCK_ALPACA=true`, trades are simulated in-memory so you can debug without network access; set it to `false` when you are ready to send real paper orders.
    - Portfolio stats recompute via live Alpaca account + yfinance quotes for valuation.
 6. **API exposure**: endpoint consumers get serialized `AgentState` snapshots (portfolio + trade history) and engine status toggles.
 

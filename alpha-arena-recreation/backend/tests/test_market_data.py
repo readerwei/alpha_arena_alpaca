@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app.config import settings
 from app.data import market_data
 
 
@@ -23,6 +24,7 @@ def _build_mock_history(rows: int = 120) -> pd.DataFrame:
 
 
 def test_get_detailed_market_data_builds_expected_sections(monkeypatch):
+    monkeypatch.setattr(settings, "USE_MOCK_MARKET_DATA", False)
     mock_df = _build_mock_history()
 
     def fake_download(*args, **kwargs):
@@ -58,6 +60,7 @@ def test_get_detailed_market_data_builds_expected_sections(monkeypatch):
 
 
 def test_get_current_prices_uses_regular_price_and_history(monkeypatch):
+    monkeypatch.setattr(settings, "USE_MOCK_MARKET_DATA", False)
     class InfoTicker:
         def __init__(self):
             self.info = {"regularMarketPrice": 123.45}

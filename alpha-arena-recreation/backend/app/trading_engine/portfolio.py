@@ -1,9 +1,12 @@
-from app.models import Position, PortfolioStatus, Trade, ExitPlan, PositionDetails
-from app.data.market_data import get_current_prices
-from app.alpaca.client import alpaca_client
-from alpaca.trading.enums import OrderSide
+from types import SimpleNamespace
+from typing import Dict, Optional
+
 import numpy as np
-from typing import Optional, Dict
+from alpaca.trading.enums import OrderSide
+
+from app.alpaca.client import alpaca_client
+from app.data.market_data import get_current_prices
+from app.models import ExitPlan, PortfolioStatus, Position, PositionDetails, Trade
 from app.storage.exit_plan_store import ExitPlanStore
 
 
@@ -19,6 +22,7 @@ class Portfolio:
         self.pnl_history = [0.0]  # To calculate Sharpe Ratio
         self.exit_plan_store = exit_plan_store or ExitPlanStore()
         self.exit_plans: Dict[str, ExitPlan] = self.exit_plan_store.load()
+        self._local_positions: Dict[str, Position] = {}
 
     async def execute_trade(
         self,
@@ -45,6 +49,13 @@ class Portfolio:
                 if exit_plan:
                     self.exit_plans[symbol] = exit_plan
                     self.exit_plan_store.save(self.exit_plans)
+                self._update_local_position(
+                    symbol=symbol,
+                    action="BUY",
+                    quantity=quantity,
+                    price=price,
+                    exit_plan=exit_plan,
+                )
             else:
                 print(f"Failed to submit BUY order for {symbol}.")
 
@@ -54,30 +65,32 @@ class Portfolio:
             current_alpaca_position = next(
                 (p for p in alpaca_positions if p.symbol == alpaca_symbol), None
             )
+            local_position = self._local_positions.get(symbol)
 
-            if current_alpaca_position:
-                # If selling to close an existing position
-                if float(current_alpaca_position.qty) >= quantity:
-                    order = alpaca_client.submit_order(
-                        symbol=alpaca_symbol, qty=quantity, side=OrderSide.SELL
-                    )
-                    if order:
-                        print(
-                            f"Alpaca SELL order submitted for {quantity} of {symbol}. Order ID: {order.id}"
-                        )
-                        # If position is fully closed, remove exit plan
-                        if float(current_alpaca_position.qty) == quantity:
-                            self.exit_plans.pop(symbol, None)
-                            self.exit_plan_store.save(self.exit_plans)
-                    else:
-                        print(f"Failed to submit SELL order for {symbol}.")
-                else:
+            can_sell_remote = (
+                current_alpaca_position and float(current_alpaca_position.qty) >= quantity
+            )
+            can_sell_local = local_position and local_position.quantity >= quantity
+
+            if can_sell_remote or can_sell_local:
+                order = alpaca_client.submit_order(
+                    symbol=alpaca_symbol, qty=quantity, side=OrderSide.SELL
+                )
+                if order:
                     print(
-                        f"Warning: Not enough holdings on Alpaca to sell {quantity} of {symbol}. Current: {current_alpaca_position.qty}. Skipping trade."
+                        f"Alpaca SELL order submitted for {quantity} of {symbol}. Order ID: {order.id}"
                     )
+                    self._update_local_position(
+                        symbol=symbol,
+                        action="SELL",
+                        quantity=quantity,
+                        price=price,
+                    )
+                else:
+                    print(f"Failed to submit SELL order for {symbol}.")
             else:
                 print(
-                    f"Warning: No open position on Alpaca for {symbol} to sell. Skipping trade."
+                    f"Warning: No open position found for {symbol} to sell. Skipping trade."
                 )
 
         # Record trade in history (assuming it was successful on Alpaca)
@@ -88,14 +101,32 @@ class Portfolio:
         """
         Calculates the current status of the portfolio by fetching data from Alpaca.
         """
-        alpaca_account = alpaca_client.trading_client.get_account()
-        self.cash = float(alpaca_account.cash)
+        try:
+            alpaca_account = alpaca_client.trading_client.get_account()
+            self.cash = float(alpaca_account.cash)
+        except Exception as exc:
+            print(
+                f"Warning: Unable to fetch Alpaca account balances ({exc}). Using last known cash value."
+            )
 
         alpaca_positions = alpaca_client.get_positions()
 
-        current_prices = get_current_prices(
-            [p.symbol for p in alpaca_positions]
-        )  # Get prices for current positions
+        if not alpaca_positions and self._local_positions:
+            alpaca_positions = [
+                SimpleNamespace(
+                    symbol=symbol,
+                    qty=position.quantity,
+                    avg_entry_price=position.average_price,
+                    unrealized_pl=0.0,
+                    market_value=position.quantity * position.average_price,
+                )
+                for symbol, position in self._local_positions.items()
+            ]
+
+        position_symbols = [p.symbol for p in alpaca_positions]
+        current_prices = (
+            get_current_prices(position_symbols) if position_symbols else {}
+        )
 
         positions_value = 0.0
         live_positions_details = []
@@ -169,3 +200,45 @@ class Portfolio:
             total_return_percent=round(total_return_percent, 2),
             sharpe_ratio=round(sharpe_ratio, 3),
         )
+
+    def _update_local_position(
+        self,
+        symbol: str,
+        action: str,
+        quantity: float,
+        price: float,
+        exit_plan: Optional[ExitPlan] = None,
+    ) -> None:
+        """
+        Mirror fills locally so offline development can function without Alpaca.
+        """
+        position = self._local_positions.get(symbol)
+
+        if action == "BUY":
+            if position:
+                total_qty = position.quantity + quantity
+                avg_price = (
+                    (position.average_price * position.quantity) + (price * quantity)
+                ) / total_qty
+                position.quantity = total_qty
+                position.average_price = avg_price
+                if exit_plan:
+                    position.exit_plan = exit_plan
+                self._local_positions[symbol] = position
+            else:
+                self._local_positions[symbol] = Position(
+                    symbol=symbol,
+                    quantity=quantity,
+                    average_price=price,
+                    exit_plan=exit_plan,
+                )
+        elif action == "SELL" and position:
+            remaining = position.quantity - quantity
+            if remaining <= 0:
+                self._local_positions.pop(symbol, None)
+                if symbol in self.exit_plans:
+                    self.exit_plans.pop(symbol, None)
+                    self.exit_plan_store.save(self.exit_plans)
+            else:
+                position.quantity = remaining
+                self._local_positions[symbol] = position

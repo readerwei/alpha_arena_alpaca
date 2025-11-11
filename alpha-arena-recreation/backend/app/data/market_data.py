@@ -1,9 +1,14 @@
+import os
 import pandas as pd
 import numpy as np
 import yfinance as yf
+
+# Avoid numba caching errors in sandboxed environments by disabling JIT at startup.
+os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 import pandas_ta as ta
 from datetime import datetime, timedelta
 from app.models import PositionDetails, ExitPlan
+from app.config import settings
 
 def _symbol_to_ticker(symbol: str) -> str:
     """Converts a symbol to a yfinance ticker."""
@@ -13,6 +18,9 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
     """
     Returns a dictionary of detailed market data for the given symbols using Yahoo Finance.
     """
+    if settings.USE_MOCK_MARKET_DATA:
+        return {symbol: _generate_mock_market_data(symbol) for symbol in symbols}
+
     detailed_data = {}
     end_date = datetime.now()
     start_date = end_date - timedelta(days=365) # 1 year of data for calculations
@@ -23,7 +31,8 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
             # Download daily data
             data = yf.download(ticker_str, start=start_date, end=end_date, interval="1d", auto_adjust=False, group_by='ticker')
             if data.empty:
-                print(f"Warning: No data found for symbol {ticker_str}")
+                print(f"Warning: No data found for symbol {ticker_str}. Using mock data.")
+                detailed_data[symbol] = _generate_mock_market_data(symbol)
                 continue
 
             # Flatten MultiIndex columns if they exist
@@ -32,7 +41,8 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
 
             # Ensure we have enough data for indicators
             if len(data) < 50: # Need at least 50 periods for EMA 50
-                print(f"Warning: Not enough data for {ticker_str} to calculate all indicators.")
+                print(f"Warning: Not enough data for {ticker_str} to calculate all indicators. Using mock data.")
+                detailed_data[symbol] = _generate_mock_market_data(symbol)
                 continue
 
             # Calculate indicators using pandas-ta
@@ -80,7 +90,8 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
                 }
             }
         except Exception as e:
-            print(f"Error fetching or processing data for {ticker_str}: {e}")
+            print(f"Error fetching or processing data for {ticker_str}: {e}. Using mock data.")
+            detailed_data[symbol] = _generate_mock_market_data(symbol)
             continue
             
     return detailed_data
@@ -89,6 +100,9 @@ def get_current_prices(symbols: list[str]) -> dict[str, float]:
     """
     Returns a dictionary of current prices for the given symbols using Yahoo Finance.
     """
+    if settings.USE_MOCK_MARKET_DATA:
+        return {symbol: _generate_mock_price(symbol) for symbol in symbols}
+
     prices = {}
     for symbol in symbols:
         ticker_str = _symbol_to_ticker(symbol)
@@ -101,8 +115,8 @@ def get_current_prices(symbols: list[str]) -> dict[str, float]:
             prices[symbol] = round(price, 2)
         except Exception as e:
             print(f"Could not fetch current price for {ticker_str}: {e}")
-            # Fallback to a placeholder or last known good price if needed
-            prices[symbol] = 0.0 
+            # Fallback to mock price if network/data unavailable
+            prices[symbol] = _generate_mock_price(symbol)
     return prices
 
 def get_mock_position_details(symbols: list[str]) -> list[PositionDetails]:
@@ -137,3 +151,62 @@ def get_mock_position_details(symbols: list[str]) -> list[PositionDetails]:
         ))
     
     return mock_positions
+
+
+def _generate_mock_market_data(symbol: str) -> dict:
+    rng = _mock_rng(symbol)
+    base_price = rng.uniform(50, 300)
+    mid_prices = np.round(
+        base_price + rng.normal(0, base_price * 0.01, size=10), 3
+    ).tolist()
+    ema_series = np.round(
+        np.array(mid_prices) * (1 + rng.normal(0, 0.001, size=10)), 3
+    ).tolist()
+
+    current_price = round(mid_prices[-1], 2)
+    ema20 = round(ema_series[-1], 2)
+    ema50 = round(ema20 * (1 + rng.normal(0, 0.005)), 2)
+
+    longer_macd = np.round(rng.normal(0, 5, size=10), 3).tolist()
+    longer_rsi = np.round(rng.uniform(35, 65, size=10), 3).tolist()
+
+    mock_data = {
+        "current": {
+            "current_price": current_price,
+            "current_ema20": ema20,
+            "current_macd": round(rng.normal(0, 5), 3),
+            "current_rsi7": round(rng.uniform(40, 70), 3),
+            "open_interest_latest": round(rng.uniform(20000, 30000), 2),
+            "open_interest_average": round(rng.uniform(20000, 30000), 2),
+            "funding_rate": float(f"{rng.uniform(1e-6, 1e-5):.8f}"),
+        },
+        "intraday_series": {
+            "mid_prices": mid_prices,
+            "ema_indicators": ema_series,
+            "macd_indicators": np.round(rng.normal(0, 5, size=10), 3).tolist(),
+            "rsi7_indicators": np.round(rng.uniform(35, 70, size=10), 3).tolist(),
+            "rsi14_indicators": np.round(rng.uniform(35, 70, size=10), 3).tolist(),
+        },
+        "longer_term_context": {
+            "ema20": ema20,
+            "ema50": ema50,
+            "atr3": round(rng.uniform(1, 5), 3),
+            "atr14": round(rng.uniform(5, 15), 3),
+            "current_volume": round(rng.uniform(1_000, 5_000), 2),
+            "average_volume": round(rng.uniform(1_000, 5_000), 2),
+            "macd_indicators": longer_macd,
+            "rsi14_indicators": longer_rsi,
+        },
+    }
+    print(f"Using mock market data for {symbol}.")
+    return mock_data
+
+
+def _generate_mock_price(symbol: str) -> float:
+    rng = _mock_rng(symbol)
+    return round(rng.uniform(50, 300), 2)
+
+
+def _mock_rng(symbol: str) -> np.random.Generator:
+    seed = abs(hash(symbol)) % (2**32)
+    return np.random.default_rng(seed)

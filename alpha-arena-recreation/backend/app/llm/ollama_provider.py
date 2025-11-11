@@ -26,7 +26,7 @@ class OllamaProvider(BaseLLMProvider):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client: # Increased timeout for LLM
+            async with httpx.AsyncClient(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
                 response = await client.post(self.url, json=payload)
                 response.raise_for_status() # Raise an exception for bad status codes
 
