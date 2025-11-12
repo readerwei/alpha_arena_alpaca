@@ -1,21 +1,25 @@
 # Alpha Arena Recreation
 
-This project is a simulation of LLM-powered autonomous trading agents, designed to recreate the core concepts of the "Alpha Arena" experiment.
+This project is a simulation of LLM-powered autonomous trading agents, designed to recreate the core concepts of the "Alpha Arena" experiment while operating on US equities by default (AAPL, NVDA, AMD). It combines live Alpaca paper trading, yfinance market data, and optional Ollama-backed LLM agents.
 
 ## Project Overview
 
-*   **Purpose**: To create a framework where multiple AI agents, powered by Large Language Models (LLMs), can autonomously trade in a simulated cryptocurrency market. The system is designed to be observable, allowing for the analysis of different agents' behaviors and performance.
+*   **Purpose**: To create a framework where multiple AI agents, powered by Large Language Models (LLMs), can autonomously trade in a simulated-yet-order-executing equities environment. The system is designed to be observable, allowing for the analysis of different agents' behaviors, prompts, exit-plan handling, and performance.
 
 *   **Architecture**:
-    *   **Backend**: A Python application built with **FastAPI**. It serves a REST API to manage and monitor the trading agents.
-    *   **Frontend**: A **React** application (currently planned, not yet implemented) that will act as a dashboard to visualize agent performance, trades, and decision-making processes.
+    *   **Backend**: A Python 3.10+ application built with **FastAPI**. It exposes REST endpoints (`/api/v1/agents`, `/engine/status`) and runs the asynchronous trading loop used by both the API and local debug scripts.
+    *   **Frontend**: Placeholder React app (not yet implemented) slated to visualize agent performance and trace decision rationales.
 
 *   **Core Logic**:
-    *   The backend runs a **Trading Engine** in a continuous loop.
-    *   In each cycle, the engine fetches mock market data for a predefined set of cryptocurrencies (BTC, ETH, SOL).
-    *   It then prompts each trading agent for a decision. The prompt includes detailed market data (current, intraday series, longer-term context) and comprehensive account information, mirroring the structure of the original Alpha Arena experiment. The LLM is expected to generate its own "Reasoning Trace" and then output a JSON decision conforming to the `LLMTradeDecision` model.
-    *   The system supports configurable LLM providers, including a mock provider for development and an **Ollama provider** for integration with local or remote Ollama instances.
-    *   The engine simulates the trade execution and updates the agent's portfolio (cash, positions, PnL).
+*   The backend runs a **Trading Engine** in a continuous loop.
+*   In each cycle, the engine fetches either:
+    *   **Live** quotes/indicator data via yfinance (when `USE_MOCK_MARKET_DATA=false`), or
+    *   **Deterministic mock** data (when `USE_MOCK_MARKET_DATA=true`) so you can test offline.
+*   It then prompts each trading agent for a decision. The prompt includes detailed market data (current, intraday series, longer-term context), filtered live positions, and exit-plan reminders. The LLM is expected to emit raw JSON conforming to `LLMTradeDecisionList`.
+*   Supported LLM providers:
+    *   **MockLLMProvider** – generates random trades for rapid iteration.
+    *   **OllamaProvider** – calls a local/remote Ollama server and includes robust JSON sanitization/fallback.
+*   Trades are executed through Alpaca. With `USE_MOCK_ALPACA=true`, fills are simulated locally; otherwise the paper-trading API is used. Exit plans persist to `exit_plans.csv` so restarts pick up trailing targets and stops.
 
 ## Building and Running
 
@@ -38,21 +42,18 @@ This project is a simulation of LLM-powered autonomous trading agents, designed 
     ```
 
 4.  **Configure Environment Variables**:
-    Create a `.env` file in the `alpha-arena-recreation/backend` directory. This file is crucial for configuring the LLM provider and its settings. It should contain:
-    *   `LLM_PROVIDER`: Set to `mock` for a randomized decision-making agent, or `ollama` to use an Ollama-hosted LLM.
-    *   `OLLAMA_URL`: (Required if `LLM_PROVIDER=ollama`) The URL of your Ollama server (e.g., `http://localhost:11434`).
-    *   `OLLAMA_MODEL`: (Required if `LLM_PROVIDER=ollama`) The name of the Ollama model to use (e.g., `qwen3:4b`).
-
-    Example `.env` for Ollama:
+    Create a `.env` file in the backend directory (loaded by `app/config.py`). Minimum keys:
     ```
-    LLM_PROVIDER=ollama
+    LLM_PROVIDER=mock            # or ollama
     OLLAMA_URL=http://localhost:11434
     OLLAMA_MODEL=qwen3:4b
+    ALPACA_API_KEY_ID=your_paper_key
+    ALPACA_SECRET_KEY=your_paper_secret
+    USE_MOCK_ALPACA=true         # flip to false for live paper trading
+    USE_MOCK_MARKET_DATA=true    # flip to false for yfinance data
+    TRADE_SYMBOLS=AAPL,NVDA,AMD  # symbols the LLM is allowed to trade
     ```
-    Example `.env` for Mock:
-    ```
-    LLM_PROVIDER=mock
-    ```
+    Adjust timeouts, exit-plan CSV paths, or symbol lists as needed. When hitting a real Alpaca account, ensure valid paper credentials exist before importing `app.alpaca.client`.
 
 5.  **Run the development server**:
     The trading engine starts automatically when the server starts.
@@ -65,7 +66,7 @@ This project is a simulation of LLM-powered autonomous trading agents, designed 
 
 *   **TODO**: Add build and run instructions once the frontend has been implemented.
 
-## Development Conventions
+## Development Conventions & Key Components
 
 ### General
 *   **Modular Structure**: The backend code is organized into distinct modules based on functionality:
@@ -77,7 +78,7 @@ This project is a simulation of LLM-powered autonomous trading agents, designed 
 
 *   **Configuration**: Application settings are managed via a `config.py` file, which loads values from environment variables (a `.env` file is expected). This allows for easy switching between LLM providers and configuration of their parameters.
 
-*   **Mock-First Development**: External services, such as the LLM and market data APIs, are abstracted and have mock implementations. This allows for isolated development and testing of the core application logic without relying on external dependencies or APIs. The mock market data now generates more realistic and detailed time-series and account information.
+*   **Mock-first toggles**: `USE_MOCK_ALPACA` and `USE_MOCK_MARKET_DATA` short-circuit live dependencies so you can iterate in sandboxes.
 
 *   **Asynchronous**: The application uses `asyncio` to run the trading loop in the background, concurrent with the API server.
 
@@ -114,9 +115,9 @@ This project is a simulation of LLM-powered autonomous trading agents, designed 
 - Use docstrings for all public functions and classes
 - Keep docstrings concise but informative
 
-## Build/Lint/Test Commands
+## Build / Lint / Test Commands
 - **Install dependencies**: `pip install -r requirements.txt`
 - **Run server**: `uvicorn app.main:app --reload`
-- **Debug single cycle**: `python debug_engine.py`
-- **Run tests**: No test framework configured yet
-- **Run single test**: No test framework configured yet
+- **Debug single cycle** (no API): `python debug_engine.py`
+- **Run entire test suite**: `pytest`
+- **Run only Ollama integration test** (requires `OLLAMA_TEST_URL`): `pytest tests/test_ollama_provider.py -m integration`
