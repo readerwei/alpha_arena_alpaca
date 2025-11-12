@@ -1,6 +1,6 @@
 # Alpha Arena Recreation
 
-This project is a simulation of LLM-powered autonomous trading agents, designed to recreate the core concepts of the "Alpha Arena" experiment while operating on US equities by default (AAPL, NVDA, AMD). It combines live Alpaca paper trading, yfinance market data, and optional Ollama-backed LLM agents.
+This project is a simulation of LLM-powered autonomous trading agents, designed to recreate the core concepts of the "Alpha Arena" experiment—originally showcased at [nof1.ai](https://nof1.ai/alpha-arena)—while operating on US equities by default (AAPL, NVDA, AMD). It combines live Alpaca paper trading, yfinance market data, and optional Ollama-backed LLM agents.
 
 ## Project Overview
 
