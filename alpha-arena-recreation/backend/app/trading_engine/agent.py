@@ -99,10 +99,14 @@ class Agent:
             f"{', '.join(settings.TRADE_SYMBOLS)}. Ignore any other holdings you might see. "
         )
         prompt += "Based on the above information, provide a JSON object with a 'decisions' key, containing a list of trade decisions for each symbol you want to trade, hold, or close. "
-        prompt += "Each decision in the list should conform to the LLMTradeDecision model, including 'symbol', 'signal' (one of 'buy_to_enter', 'sell_to_enter', 'hold', 'close'), 'confidence', 'justification', and relevant optional fields like 'stop_loss', 'leverage', 'risk_usd', 'profit_target', 'quantity', and 'invalidation_condition'.\n"
+        prompt += (
+            "Each decision in the list should conform to the LLMTradeDecision model, including 'symbol', 'signal' (one of 'buy_to_enter', 'sell_to_enter', 'hold', 'close'), "
+            "'confidence', 'justification', and relevant optional fields like 'stop_loss', 'leverage', 'risk_usd', 'profit_target', 'quantity', and 'invalidation_condition'. "
+            "The 'confidence' field must reflect your best-effort probability (0.0–1.0) that the action is correct for the given market context—do not default to 0.0 unless truly uncertain.\n"
+        )
         prompt += "For 'close' signals, you must specify the symbol of the position to close.\n"
         prompt += (
-            "For 'buy_to_enter' or 'sell_to_enter', you must specify a quantity.\n"
+            "For 'buy_to_enter' or 'sell_to_enter', you must specify both a quantity and a clear 'invalidation_condition' describing when the exit plan should trigger (e.g., price crosses a threshold, indicator flips, etc.).\n"
         )
         prompt += (
             "You can also choose to 'hold' a position or do nothing for a symbol.\n"
