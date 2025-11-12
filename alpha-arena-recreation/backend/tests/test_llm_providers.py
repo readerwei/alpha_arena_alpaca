@@ -38,3 +38,14 @@ def test_mock_llm_provider_generates_deterministic_trade(monkeypatch):
     assert decision.risk_usd == pytest.approx(800.0)
     assert decision.confidence == pytest.approx(0.9)
     assert decision.invalidation_condition == "BTC breaks below 101000.0"
+
+
+def run_exit_condition_tests() -> int:
+    """Expose this module's pytest execution as a callable helper."""
+    import pytest
+
+    return pytest.main([__file__])
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_exit_condition_tests())

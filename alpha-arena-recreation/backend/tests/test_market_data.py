@@ -86,3 +86,14 @@ def test_get_current_prices_uses_regular_price_and_history(monkeypatch):
 
     assert prices["INFO"] == 123.45
     assert prices["FALLBACK"] == pytest.approx(98.76, rel=1e-6)
+
+
+def run_exit_condition_tests() -> int:
+    """Expose this module's pytest execution as a callable helper."""
+    import pytest
+
+    return pytest.main([__file__])
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_exit_condition_tests())

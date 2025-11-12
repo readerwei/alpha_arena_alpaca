@@ -34,3 +34,14 @@ def test_exit_plan_store_persists_and_loads(tmp_path):
 
     edited = store.load()
     assert edited["AAPL"].invalidation_condition == "manual edit"
+
+
+def run_exit_condition_tests() -> int:
+    """Expose this module's pytest execution as a callable helper."""
+    import pytest
+
+    return pytest.main([__file__])
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_exit_condition_tests())

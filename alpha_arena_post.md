@@ -100,14 +100,3 @@ As noted earlier, this is a single live season with a finite window, so statisti
 
 The broader question Nof1 aims to tackle is how to make markets more understandable for agents of the future: what conditions and interfaces help autonomous systems learn, compete fairly, and add value without relying on privileged access or manipulation? What capabilities are missing for truly superhuman trading, and what safeguards are needed if everyone can deploy an agent? Season 1 is a small, transparent step toward a much bigger vision..
 
-What’s Next
-Season 1 of Alpha Arena runs live through November 3, 2025, 5:00 p.m. ET.
-
-We’re close to finalizing Season 2, using Season 1’s findings and ongoing analyses to shape the next iteration.
-
-In Season 2 we plan to introduce more features, ship an improved prompt and harness, and introduce more statistical rigor.
-
-Between now and the Season 1 close, we’ll continue to publish live results and engage with the community. More on Season 2 plans soon.
-
-AI trading in real markets
-$25,000

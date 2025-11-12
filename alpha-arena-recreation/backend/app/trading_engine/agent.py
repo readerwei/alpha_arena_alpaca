@@ -119,8 +119,8 @@ class Agent:
         """
         Checks for exit conditions, then gets decisions from the LLM and executes trades.
         """
-        # 1. Position Management: Check for SL/TP hits before asking LLM
-        await self._check_exit_conditions()
+        # 1. Exit plans now evaluated by the LLM prompt; skip redundant local checks.
+        # await self._check_exit_conditions()
 
         # 2. Generate prompt and get decisions from LLM
         prompt = await self._generate_prompt()

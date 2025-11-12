@@ -1,4 +1,11 @@
 import asyncio
+import sys
+from pathlib import Path
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 
 from app.llm.base import BaseLLMProvider
 from app.models import (
@@ -119,3 +126,14 @@ def test_generate_prompt_includes_market_and_portfolio_sections(monkeypatch):
     assert "### HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE" in prompt
     assert "\"symbol\": \"BTC\"" in prompt
     assert "provide a JSON object with a 'decisions' key" in prompt
+
+
+def run_exit_condition_tests() -> int:
+    """Expose this module's pytest execution as a callable helper."""
+    import pytest
+
+    return pytest.main([__file__])
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_exit_condition_tests())

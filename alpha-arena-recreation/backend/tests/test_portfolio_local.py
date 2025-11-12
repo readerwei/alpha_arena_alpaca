@@ -53,3 +53,14 @@ def test_portfolio_removes_local_position_on_sell():
 
     assert "AAPL" not in portfolio._local_positions
     assert "AAPL" not in store.saved
+
+
+def run_exit_condition_tests() -> int:
+    """Expose this module's pytest execution as a callable helper."""
+    import pytest
+
+    return pytest.main([__file__])
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_exit_condition_tests())
