@@ -95,10 +95,12 @@ python debug_engine.py
   - Catch expected provider/network failures and log them; never silently drop exceptions unless there’s a documented fallback (see Ollama provider pattern).
   - When interacting with Alpaca, log symbol/qty on failure to ease postmortems.
 - **State management**: Update `app/models.py` and prompt builders together whenever `LLMTradeDecision` schema changes; mismatches create runtime validation errors.
+- **Prompt discipline**: `Agent._generate_prompt()` now enforces raw-JSON replies, filters live positions to `settings.TRADE_SYMBOLS`, and tells the LLM to evaluate exit plans itself. Keep those constraints in sync with any schema tweaks or symbol-list changes.
 - **Documentation**: Keep docstrings up to date for all public classes/functions. When prompt shape changes, mirror it in `execution_flow.md`.
 
 ## Testing & Validation Expectations
 - Backend unit tests live in `alpha-arena-recreation/backend/tests`; run them with `pytest`.
+- To run the optional Ollama integration test, set `OLLAMA_TEST_URL` (and optionally `OLLAMA_TEST_MODEL`) and execute `pytest tests/test_ollama_provider.py -m integration`. The helper will `asyncio.run` the provider against your live endpoint.
 - Always smoke test the trading loop via `python debug_engine.py` after touching agent logic.
 - Hit `curl http://localhost:8000/api/v1/agents` (or the Swagger UI) while the server runs to sanity-check serialized state.
 - Temporary instrumentation/log prints are acceptable during debugging but remove them before merging unless they provide lasting value.

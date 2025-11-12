@@ -75,12 +75,29 @@ class Agent:
         prompt += f"Available Cash: {portfolio_status.cash}\n\n"
         prompt += f"**Current Account Value:** {portfolio_status.total_value}\n\n"
         prompt += "Current live positions & performance:\n"
+        allowed_symbols = set(settings.TRADE_SYMBOLS)
         if not portfolio_status.live_positions_details:
             prompt += "{}\\n\n"
         else:
+            wrote_position = False
             for pos in portfolio_status.live_positions_details:
+                if pos.symbol not in allowed_symbols:
+                    continue
                 prompt += json.dumps(pos.dict(), indent=4) + "\n\n"
+                wrote_position = True
+            if not wrote_position:
+                prompt += "{}\\n\n"
         prompt += f"Sharpe Ratio: {portfolio_status.sharpe_ratio}\n\n"
+        prompt += "### EXIT PLAN STATUS & INSTRUCTIONS\n"
+        prompt += (
+            "For every currently held symbol, inspect its `exit_plan` (profit_target / stop_loss / invalidation_condition) "
+            "versus the latest market data above. If current conditions satisfy the exit plan—for example price >= profit_target "
+            "or price <= stop_loss—issue the appropriate `close` decision in this cycle. Only keep holding if neither boundary is met.\n\n"
+        )
+        prompt += (
+            "You may ONLY issue decisions for the following symbols: "
+            f"{', '.join(settings.TRADE_SYMBOLS)}. Ignore any other holdings you might see. "
+        )
         prompt += "Based on the above information, provide a JSON object with a 'decisions' key, containing a list of trade decisions for each symbol you want to trade, hold, or close. "
         prompt += "Each decision in the list should conform to the LLMTradeDecision model, including 'symbol', 'signal' (one of 'buy_to_enter', 'sell_to_enter', 'hold', 'close'), 'confidence', 'justification', and relevant optional fields like 'stop_loss', 'leverage', 'risk_usd', 'profit_target', 'quantity', and 'invalidation_condition'.\n"
         prompt += "For 'close' signals, you must specify the symbol of the position to close.\n"
@@ -89,6 +106,11 @@ class Agent:
         )
         prompt += (
             "You can also choose to 'hold' a position or do nothing for a symbol.\n"
+        )
+        prompt += (
+            "OUTPUT FORMAT REQUIREMENTS: Respond with raw JSON only (no markdown fences, no prose, no error strings). "
+            "Use double quotes for all keys/strings, and if you have no trades simply respond with {\"decisions\": []}. "
+            "Never include messages like 'Invalid JSON' or explanations outside the JSON object.\n"
         )
 
         return prompt
