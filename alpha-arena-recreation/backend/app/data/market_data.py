@@ -45,7 +45,10 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
                 detailed_data[symbol] = _generate_mock_market_data(symbol)
                 continue
 
-            # Calculate indicators using pandas-ta
+            # Ensure datetime index for resampling operations
+            data.index = pd.DatetimeIndex(data.index)
+
+            # Calculate indicators using pandas-ta on daily data
             data.ta.ema(length=20, append=True)
             data.ta.ema(length=50, append=True)
             data.ta.macd(append=True)
@@ -53,9 +56,40 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
             data.ta.rsi(length=14, append=True)
             data.ta.atr(length=3, append=True)
             data.ta.atr(length=14, append=True)
+
+            # Resample to weekly data for longer-term context
+            weekly_ohlcv = (
+                data[["Open", "High", "Low", "Close", "Volume"]]
+                .resample("W")
+                .agg(
+                    {
+                        "Open": "first",
+                        "High": "max",
+                        "Low": "min",
+                        "Close": "last",
+                        "Volume": "sum",
+                    }
+                )
+            ).dropna()
+
+            if len(weekly_ohlcv) < 50:
+                print(
+                    f"Warning: Not enough weekly data for {ticker_str} to calculate long-term indicators. Using mock data."
+                )
+                detailed_data[symbol] = _generate_mock_market_data(symbol)
+                continue
+
+            weekly_data = weekly_ohlcv.copy()
+            weekly_data.ta.ema(length=20, append=True)
+            weekly_data.ta.ema(length=50, append=True)
+            weekly_data.ta.macd(append=True)
+            weekly_data.ta.rsi(length=14, append=True)
+            weekly_data.ta.atr(length=3, append=True)
+            weekly_data.ta.atr(length=14, append=True)
             
             # Get the latest data point
             latest = data.iloc[-1]
+            latest_weekly = weekly_data.iloc[-1]
 
             # Intraday series (using last 10 days as a substitute for 3-min intervals)
             intraday_series_df = data.tail(10)
@@ -79,14 +113,14 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
                     "rsi14_indicators": intraday_series_df["RSI_14"].round(3).tolist()
                 },
                 "longer_term_context": {
-                    "ema20": latest["EMA_20"],
-                    "ema50": latest["EMA_50"],
-                    "atr3": latest["ATRr_3"],
-                    "atr14": latest["ATRr_14"],
-                    "current_volume": latest["Volume"],
-                    "average_volume": data["Volume"].mean(),
-                    "macd_indicators": data.tail(10)["MACD_12_26_9"].round(3).tolist(),
-                    "rsi14_indicators": data.tail(10)["RSI_14"].round(3).tolist()
+                    "ema20": latest_weekly["EMA_20"],
+                    "ema50": latest_weekly["EMA_50"],
+                    "atr3": latest_weekly["ATRr_3"],
+                    "atr14": latest_weekly["ATRr_14"],
+                    "current_volume": latest_weekly["Volume"],
+                    "average_volume": weekly_data["Volume"].mean(),
+                    "macd_indicators": weekly_data.tail(10)["MACD_12_26_9"].round(3).tolist(),
+                    "rsi14_indicators": weekly_data.tail(10)["RSI_14"].round(3).tolist()
                 }
             }
         except Exception as e:

@@ -122,7 +122,7 @@ def test_generate_prompt_includes_market_and_portfolio_sections(monkeypatch):
 
     assert "### ALL BTC DATA" in prompt
     assert "current_price = 45000.0" in prompt
-    assert "Open Interest: Latest: 25000.0" in prompt
+    assert "**Longer‑term context (weekly timeframe):**" in prompt
     assert "### HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE" in prompt
     assert "\"symbol\": \"BTC\"" in prompt
     assert "provide a JSON object with a 'decisions' key" in prompt

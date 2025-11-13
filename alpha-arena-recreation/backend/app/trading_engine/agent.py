@@ -42,16 +42,13 @@ class Agent:
         prompt += (
             "**ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST**\n\n"
         )
-        prompt += "**Timeframes note:** Unless stated otherwise in a section title, intraday series are provided at **3‑minute intervals**. If a symbol uses a different interval, it is explicitly stated in that symbol’s section.\n\n"
+        prompt += "**Timeframes note:** Unless stated otherwise in a section title, the series provided below are sampled at **daily intervals**. If a symbol uses a different interval, it is explicitly stated in that symbol’s section.\n\n"
         prompt += "---\n\n"
         prompt += "### CURRENT MARKET STATE FOR ALL COINS\n\n"
 
         for symbol, data in detailed_market_data.items():
             prompt += f"### ALL {symbol} DATA\n\n"
             prompt += f"current_price = {data['current']['current_price']}, current_ema20 = {data['current']['current_ema20']}, current_macd = {data['current']['current_macd']}, current_rsi (7 period) = {data['current']['current_rsi7']}\n\n"
-            prompt += f"In addition, here is the latest {symbol} open interest and funding rate for perps (the instrument you are trading):\n\n"
-            prompt += f"Open Interest: Latest: {data['current']['open_interest_latest']}  Average: {data['current']['open_interest_average']}\n\n"
-            prompt += f"Funding Rate: {data['current']['funding_rate']}\n\n"
             prompt += "**Intraday series (by minute, oldest → latest):**\n\n"
             prompt += f"Mid prices: {data['intraday_series']['mid_prices']}\n\n"
             prompt += f"EMA indicators (20‑period): {data['intraday_series']['ema_indicators']}\n\n"
@@ -60,7 +57,7 @@ class Agent:
             )
             prompt += f"RSI indicators (7‑Period): {data['intraday_series']['rsi7_indicators']}\n\n"
             prompt += f"RSI indicators (14‑Period): {data['intraday_series']['rsi14_indicators']}\n\n"
-            prompt += "**Longer‑term context (4‑hour timeframe):**\n\n"
+            prompt += "**Longer‑term context (weekly timeframe):**\n\n"
             prompt += f"20‑Period EMA: {data['longer_term_context']['ema20']} vs. 50‑Period EMA: {data['longer_term_context']['ema50']}\n\n"
             prompt += f"3‑Period ATR: {data['longer_term_context']['atr3']} vs. 14‑Period ATR: {data['longer_term_context']['atr14']}\n\n"
             prompt += f"Current Volume: {data['longer_term_context']['current_volume']} vs. Average Volume: {data['longer_term_context']['average_volume']}\n\n"
