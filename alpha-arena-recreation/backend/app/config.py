@@ -23,7 +23,7 @@ class Settings:
     
     
     # List of cryptocurrencies to trade
-    TRADE_SYMBOLS: list[str] = ["AAPL", "NVDA", "AMD"]
+    TRADE_SYMBOLS: list[str] = ["AAPL", "NVDA", "AMD", "AMZN", "ABNB"]
     
     # Trading loop interval in seconds
     LOOP_INTERVAL_SECONDS: int = 300  # 5 minutes
