@@ -44,12 +44,12 @@ class Agent:
         )
         prompt += "**Timeframes note:** Unless stated otherwise in a section title, the series provided below are sampled at **daily intervals**. If a symbol uses a different interval, it is explicitly stated in that symbol’s section.\n\n"
         prompt += "---\n\n"
-        prompt += "### CURRENT MARKET STATE FOR ALL COINS\n\n"
+        prompt += "### CURRENT MARKET STATE FOR ALL SYMBOLS\n\n"
 
         for symbol, data in detailed_market_data.items():
             prompt += f"### ALL {symbol} DATA\n\n"
             prompt += f"current_price = {data['current']['current_price']}, current_ema20 = {data['current']['current_ema20']}, current_macd = {data['current']['current_macd']}, current_rsi (7 period) = {data['current']['current_rsi7']}\n\n"
-            prompt += "**Intraday series (by minute, oldest → latest):**\n\n"
+            prompt += "**Daily series (oldest → latest):**\n\n"
             prompt += f"Mid prices: {data['intraday_series']['mid_prices']}\n\n"
             prompt += f"EMA indicators (20‑period): {data['intraday_series']['ema_indicators']}\n\n"
             prompt += (

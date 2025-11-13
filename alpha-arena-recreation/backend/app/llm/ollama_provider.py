@@ -1,5 +1,7 @@
 import httpx
 import json
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from app.llm.base import BaseLLMProvider
@@ -13,12 +15,15 @@ class OllamaProvider(BaseLLMProvider):
     def __init__(self, model_name: str, url: str):
         super().__init__(model_name)
         self.url = f"{url}/api/generate"
+        self.prompt_log_path = settings.PROJECT_ROOT / "logging" / "ollama_prompts.log"
+        self.prompt_log_path.parent.mkdir(parents=True, exist_ok=True)
 
     async def get_trade_decision(self, prompt: str) -> LLMTradeDecisionList:
         """
         Sends the prompt to the Ollama server and gets a trade decision.
         """
         print(f"Sending prompt to Ollama model: {self.model_name} at {self.url}")
+        self._log_prompt(prompt)
         
         payload = {
             "model": self.model_name,
@@ -46,6 +51,7 @@ class OllamaProvider(BaseLLMProvider):
                 json_content = self._deserialize_response_payload(response_data)
 
                 print("Received response from Ollama:", json_content)
+                self._log_response(json_content)
                 
                 # Validate with Pydantic
                 decisions = LLMTradeDecisionList(**json_content)
@@ -110,3 +116,26 @@ class OllamaProvider(BaseLLMProvider):
             raise json.JSONDecodeError("Ollama reported invalid JSON output.", candidate, 0)
 
         return json.loads(candidate)
+
+    def _log_prompt(self, prompt: str) -> None:
+        """Append the outgoing prompt to the log file."""
+        self._append_log_entry("PROMPT", prompt)
+
+    def _log_response(self, payload: dict[str, Any]) -> None:
+        """Append the parsed response to the log file."""
+        formatted = json.dumps(payload, indent=2, sort_keys=True)
+        self._append_log_entry("RESPONSE", formatted)
+
+    def _append_log_entry(self, label: str, content: str) -> None:
+        timestamp = datetime.utcnow().isoformat()
+        entry_lines = [
+            f"[{timestamp} UTC] {label}",
+            content.rstrip(),
+            "=" * 80,
+            "",
+        ]
+        try:
+            with self.prompt_log_path.open("a", encoding="utf-8") as logfile:
+                logfile.write("\n".join(entry_lines))
+        except OSError as exc:
+            print(f"Warning: Failed to write Ollama prompt log: {exc}")
