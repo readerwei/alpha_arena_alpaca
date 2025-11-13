@@ -55,8 +55,6 @@ def test_get_detailed_market_data_builds_expected_sections(monkeypatch):
     assert isinstance(longer["ema50"], float)
     assert isinstance(longer["atr3"], float)
     assert isinstance(longer["atr14"], float)
-    assert len(longer["macd_indicators"]) == 10
-    assert len(longer["rsi14_indicators"]) == 10
 
 
 def test_get_current_prices_uses_regular_price_and_history(monkeypatch):

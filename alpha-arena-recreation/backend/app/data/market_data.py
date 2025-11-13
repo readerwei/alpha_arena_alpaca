@@ -10,6 +10,21 @@ from datetime import datetime, timedelta
 from app.models import PositionDetails, ExitPlan
 from app.config import settings
 
+
+def _safe_float(value) -> float:
+    """Convert numeric-like values (including numpy scalars) to built-in floats."""
+    if value is None:
+        return float("nan")
+    try:
+        if pd.isna(value):
+            return float("nan")
+    except Exception:
+        pass
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
+
 def _symbol_to_ticker(symbol: str) -> str:
     """Converts a symbol to a yfinance ticker."""
     return symbol
@@ -72,20 +87,32 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
                 )
             ).dropna()
 
-            if len(weekly_ohlcv) < 50:
+            if len(weekly_ohlcv) < 10:
                 print(
-                    f"Warning: Not enough weekly data for {ticker_str} to calculate long-term indicators. Using mock data."
+                    f"Warning: Limited weekly data for {ticker_str}. Long-term indicators may be less reliable."
                 )
-                detailed_data[symbol] = _generate_mock_market_data(symbol)
-                continue
 
             weekly_data = weekly_ohlcv.copy()
-            weekly_data.ta.ema(length=20, append=True)
-            weekly_data.ta.ema(length=50, append=True)
-            weekly_data.ta.macd(append=True)
-            weekly_data.ta.rsi(length=14, append=True)
-            weekly_data.ta.atr(length=3, append=True)
-            weekly_data.ta.atr(length=14, append=True)
+            weekly_close = weekly_data["Close"]
+            weekly_high = weekly_data["High"]
+            weekly_low = weekly_data["Low"]
+
+            weekly_data["EMA_20"] = ta.ema(weekly_close, length=20)
+            weekly_data["EMA_50"] = ta.ema(weekly_close, length=50)
+
+            weekly_macd = ta.macd(weekly_close)
+            if weekly_macd is not None and "MACD_12_26_9" in weekly_macd.columns:
+                weekly_data["MACD_12_26_9"] = weekly_macd["MACD_12_26_9"]
+            else:
+                weekly_data["MACD_12_26_9"] = float("nan")
+
+            weekly_data["RSI_14"] = ta.rsi(weekly_close, length=14)
+            weekly_data["ATRr_3"] = ta.atr(
+                high=weekly_high, low=weekly_low, close=weekly_close, length=3
+            )
+            weekly_data["ATRr_14"] = ta.atr(
+                high=weekly_high, low=weekly_low, close=weekly_close, length=14
+            )
             
             # Get the latest data point
             latest = data.iloc[-1]
@@ -113,12 +140,12 @@ def get_detailed_market_data(symbols: list[str]) -> dict:
                     "rsi14_indicators": intraday_series_df["RSI_14"].round(3).tolist()
                 },
                 "longer_term_context": {
-                    "ema20": latest_weekly["EMA_20"],
-                    "ema50": latest_weekly["EMA_50"],
-                    "atr3": latest_weekly["ATRr_3"],
-                    "atr14": latest_weekly["ATRr_14"],
-                    "current_volume": latest_weekly["Volume"],
-                    "average_volume": weekly_data["Volume"].mean(),
+                    "ema20": _safe_float(latest_weekly["EMA_20"]),
+                    "ema50": _safe_float(latest_weekly["EMA_50"]),
+                    "atr3": _safe_float(latest_weekly["ATRr_3"]),
+                    "atr14": _safe_float(latest_weekly["ATRr_14"]),
+                    "current_volume": _safe_float(latest_weekly["Volume"]),
+                    "average_volume": _safe_float(weekly_data["Volume"].mean()),
                     "macd_indicators": weekly_data.tail(10)["MACD_12_26_9"].round(3).tolist(),
                     "rsi14_indicators": weekly_data.tail(10)["RSI_14"].round(3).tolist()
                 }
