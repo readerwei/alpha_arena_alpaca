@@ -38,6 +38,7 @@ class MockLLMProvider(BaseLLMProvider):
             signal=signal,
             confidence=round(random.uniform(0.5, 1.0), 2),
             justification="This is a mock decision based on random choice. The LLM observed a simulated pattern and decided to act.",
+            reasoning_trace="Mock indicators -> random coin flip -> selected outcome.",
             stop_loss=stop_loss,
             leverage=leverage,
             risk_usd=risk_usd,

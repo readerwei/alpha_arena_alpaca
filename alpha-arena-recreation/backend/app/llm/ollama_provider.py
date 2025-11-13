@@ -81,7 +81,8 @@ class OllamaProvider(BaseLLMProvider):
                 symbol="N/A",
                 signal="hold",
                 confidence=0.0,
-                justification="Fell back to default 'hold' due to an error in the LLM provider."
+                justification="Fell back to default 'hold' due to an error in the LLM provider.",
+                reasoning_trace="Fallback decision emitted because the upstream LLM response failed."
             )
         ])
 

@@ -98,8 +98,11 @@ class Agent:
         prompt += "Based on the above information, provide a JSON object with a 'decisions' key, containing a list of trade decisions for each symbol you want to trade, hold, or close. "
         prompt += (
             "Each decision in the list should conform to the LLMTradeDecision model, including 'symbol', 'signal' (one of 'buy_to_enter', 'sell_to_enter', 'hold', 'close'), "
-            "'confidence', 'justification', and relevant optional fields like 'stop_loss', 'leverage', 'risk_usd', 'profit_target', 'quantity', and 'invalidation_condition'. "
+            "'confidence', 'justification', 'reasoning_trace', and relevant optional fields like 'stop_loss', 'leverage', 'risk_usd', 'profit_target', 'quantity', and 'invalidation_condition'. "
             "The 'confidence' field must reflect your best-effort probability (0.0–1.0) that the action is correct for the given market context—do not default to 0.0 unless truly uncertain.\n"
+        )
+        prompt += (
+            "Use 'reasoning_trace' to describe the intermediate analysis steps (indicators reviewed, comparisons made, exit-plan checks) that led to the decision, even if the final justification is short.\n"
         )
         prompt += "For 'close' signals, you must specify the symbol of the position to close.\n"
         prompt += (
@@ -174,6 +177,8 @@ class Agent:
                     f"Agent {self.name} executed: {decision.signal} {decision.quantity:.6f} {decision.symbol} @ ${price:,.2f}"
                 )
                 print(f"  Justification: {decision.justification}")
+                if decision.reasoning_trace:
+                    print(f"  Reasoning Trace: {decision.reasoning_trace}")
 
             elif decision.signal == "close":
                 # Fetch current positions from portfolio (which now gets them from Alpaca)
@@ -192,6 +197,8 @@ class Agent:
                         f"Agent {self.name} decided to CLOSE position for {decision.symbol} at price ${price:,.2f}."
                     )
                     print(f"  Justification: {decision.justification}")
+                    if decision.reasoning_trace:
+                        print(f"  Reasoning Trace: {decision.reasoning_trace}")
                 else:
                     print(
                         f"Warning: Agent {self.name} decided to CLOSE position for {decision.symbol}, but no open position was found."
@@ -201,6 +208,9 @@ class Agent:
                 print(
                     f"Agent {self.name} decided to HOLD position for {decision.symbol}."
                 )
+                print(f"  Justification: {decision.justification}")
+                if decision.reasoning_trace:
+                    print(f"  Reasoning Trace: {decision.reasoning_trace}")
 
             else:
                 print(

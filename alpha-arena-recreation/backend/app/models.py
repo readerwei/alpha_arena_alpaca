@@ -59,6 +59,7 @@ class LLMTradeDecision(BaseModel):
     ]  # More specific actions
     confidence: float = Field(ge=0, le=1)
     justification: str  # Renamed from reasoning
+    reasoning_trace: Optional[str] = None
 
     # New fields from the prompt example
     stop_loss: Optional[float] = None

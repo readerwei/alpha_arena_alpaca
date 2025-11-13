@@ -126,6 +126,7 @@ def test_generate_prompt_includes_market_and_portfolio_sections(monkeypatch):
     assert "### HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE" in prompt
     assert "\"symbol\": \"BTC\"" in prompt
     assert "provide a JSON object with a 'decisions' key" in prompt
+    assert "'reasoning_trace'" in prompt
 
 
 def run_exit_condition_tests() -> int:
