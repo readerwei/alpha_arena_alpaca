@@ -2,7 +2,7 @@ import httpx
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from app.llm.base import BaseLLMProvider
 from app.models import LLMTradeDecision, LLMTradeDecisionList
@@ -14,7 +14,7 @@ class OllamaProvider(BaseLLMProvider):
     """
     def __init__(self, model_name: str, url: str):
         super().__init__(model_name)
-        self.url = f"{url}/api/generate"
+        self.chat_url = f"{url}/api/chat"
         self.prompt_log_path = settings.PROJECT_ROOT / "logging" / "ollama_prompts.log"
         self.prompt_log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -22,19 +22,22 @@ class OllamaProvider(BaseLLMProvider):
         """
         Sends the prompt to the Ollama server and gets a trade decision.
         """
-        print(f"Sending prompt to Ollama model: {self.model_name} at {self.url}")
+        print(f"Sending prompt to Ollama model: {self.model_name} at {self.chat_url}")
         self._log_prompt(prompt)
         
         payload = {
             "model": self.model_name,
-            "prompt": prompt,
-            "format": "json", # Request JSON output
-            "stream": False # For simplicity, get the full response at once
+            "messages": [
+                {"role": "user", "content": prompt},
+            ],
+            "format": "json",
+            "stream": False,  # Request a single response payload
+            "think": True,  # Capture reasoning traces if the model emits them
         }
 
         try:
             async with httpx.AsyncClient(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
-                response = await client.post(self.url, json=payload)
+                response = await client.post(self.chat_url, json=payload)
                 response.raise_for_status() # Raise an exception for bad status codes
 
                 try:
@@ -48,17 +51,29 @@ class OllamaProvider(BaseLLMProvider):
                     print(f"Ollama API returned an error: {api_error}")
                     return self._get_fallback_decision()
 
-                json_content = self._deserialize_response_payload(response_data)
+                message_block = response_data.get("message") or {}
+                message_content = message_block.get("content", "")
+                thinking_trace = message_block.get("thinking")
+
+                json_content = self._deserialize_response_payload(message_content)
+                try:
+                    normalized_payload = self._normalize_decisions(json_content)
+                except ValueError as exc:
+                    print(f"Ollama response normalization failed: {exc}")
+                    print("Raw Ollama content:", message_content)
+                    raise
 
                 print("Received response from Ollama:", json_content)
-                self._log_response(json_content)
+                if thinking_trace:
+                    print("Ollama reasoning trace:", thinking_trace)
+                self._log_response(json_content, thinking_trace)
                 
                 # Validate with Pydantic
-                decisions = LLMTradeDecisionList(**json_content)
+                decisions = LLMTradeDecisionList(**normalized_payload)
                 return decisions
 
         except httpx.RequestError as e:
-            print(f"Error making request to Ollama: {e}")
+            print(f"Error making request to Ollama: {e} ({e.__class__.__name__})")
             # Fallback to a 'hold' decision on error
             return self._get_fallback_decision()
         except json.JSONDecodeError as e:
@@ -66,7 +81,8 @@ class OllamaProvider(BaseLLMProvider):
             # response_data may be undefined if decoding of HTTP payload failed earlier.
             raw_response = locals().get("response_data")
             if raw_response:
-                print(f"Raw response content: {raw_response.get('response')}")
+                message_block = raw_response.get("message") or {}
+                print(f"Raw response content: {message_block.get('content')}")
             else:
                 print("Raw response content unavailable due to earlier failure.")
             return self._get_fallback_decision()
@@ -85,12 +101,12 @@ class OllamaProvider(BaseLLMProvider):
             )
         ])
 
-    def _deserialize_response_payload(self, response_data: dict[str, Any]) -> dict[str, Any]:
+    def _deserialize_response_payload(self, message_content: str) -> dict[str, Any]:
         """
-        Extracts and cleans the JSON content emitted by Ollama. Ollama sometimes wraps JSON in
-        markdown fences or returns plain-text error strings, so we normalize before loading.
+        Extracts and cleans the JSON content emitted by Ollama. Even in chat mode models may wrap
+        their JSON in markdown fences or prepend explanatory text, so we normalize before loading.
         """
-        json_content_str = response_data.get("response", "")
+        json_content_str = message_content or ""
 
         if not json_content_str:
             raise json.JSONDecodeError("Empty response payload from Ollama.", "", 0)
@@ -121,10 +137,61 @@ class OllamaProvider(BaseLLMProvider):
         """Append the outgoing prompt to the log file."""
         self._append_log_entry("PROMPT", prompt)
 
-    def _log_response(self, payload: dict[str, Any]) -> None:
-        """Append the parsed response to the log file."""
+    def _log_response(self, payload: dict[str, Any], thinking: Optional[str] = None) -> None:
+        """Append the parsed response (and optional reasoning trace) to the log file."""
         formatted = json.dumps(payload, indent=2, sort_keys=True)
+        if thinking:
+            formatted = f"{formatted}\n\nReasoning Trace:\n{thinking}"
         self._append_log_entry("RESPONSE", formatted)
+
+    def _normalize_decisions(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Ensures the Ollama response conforms to the LLMTradeDecisionList schema. Some models emit
+        decision dictionaries keyed by symbol with nested {action, reason} objects; convert those
+        into the expected list of decision dicts.
+        """
+        decisions = payload.get("decisions")
+        if decisions is None:
+            # Some models omit the wrapper and return {symbol: {...}} directly.
+            if all(
+                isinstance(v, dict)
+                and any(k in v for k in ("signal", "action", "decision"))
+                for v in payload.values()
+            ):
+                decisions = payload
+            else:
+                raise ValueError("Ollama response missing 'decisions' key.")
+
+        if isinstance(decisions, list):
+            return payload
+
+        if isinstance(decisions, dict):
+            normalized_list: list[dict[str, Any]] = []
+            for symbol, decision_data in decisions.items():
+                if not isinstance(decision_data, dict):
+                    continue
+                action = decision_data.get("signal") or decision_data.get("action")
+                if not action:
+                    continue
+                normalized_list.append(
+                    {
+                        "symbol": symbol,
+                        "signal": action,
+                        "confidence": decision_data.get("confidence", 0.5),
+                        "justification": decision_data.get("justification") or decision_data.get("reason") or "",
+                        "reasoning_trace": decision_data.get("reasoning_trace"),
+                        "stop_loss": decision_data.get("stop_loss"),
+                        "leverage": decision_data.get("leverage"),
+                        "risk_usd": decision_data.get("risk_usd"),
+                        "profit_target": decision_data.get("profit_target"),
+                        "quantity": decision_data.get("quantity"),
+                        "invalidation_condition": decision_data.get("invalidation_condition"),
+                    }
+                )
+            payload["decisions"] = normalized_list
+            return payload
+
+        raise ValueError("Ollama response 'decisions' must be a list or dict.")
 
     def _append_log_entry(self, label: str, content: str) -> None:
         timestamp = datetime.utcnow().isoformat()

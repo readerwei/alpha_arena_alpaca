@@ -34,33 +34,31 @@ def _sample_decision_payload() -> str:
 
 def test_deserialize_plain_json():
     provider = _provider()
-    result = provider._deserialize_response_payload({"response": _sample_decision_payload()})
+    result = provider._deserialize_response_payload(_sample_decision_payload())
     assert result["decisions"][0]["symbol"] == "AAPL"
 
 
 def test_deserialize_strips_code_fences():
     provider = _provider()
-    payload = {"response": f"```json\n{_sample_decision_payload()}\n```"}
+    payload = f"```json\n{_sample_decision_payload()}\n```"
     result = provider._deserialize_response_payload(payload)
     assert result["decisions"][0]["signal"] == "hold"
 
 
 def test_deserialize_trims_surrounding_text():
     provider = _provider()
-    payload = {
-        "response": (
-            "Sure, here is what I recommend:\n"
-            f"{_sample_decision_payload()}\n"
-            "Let me know if you need anything else."
-        )
-    }
+    payload = (
+        "Sure, here is what I recommend:\n"
+        f"{_sample_decision_payload()}\n"
+        "Let me know if you need anything else."
+    )
     result = provider._deserialize_response_payload(payload)
     assert result["decisions"][0]["confidence"] == pytest.approx(0.5)
 
 
 def test_deserialize_raises_for_invalid_json_message():
     provider = _provider()
-    payload = {"response": "Invalid JSON: Expecting value: line 1 column 1 (char 0)"}
+    payload = "Invalid JSON: Expecting value: line 1 column 1 (char 0)"
     with pytest.raises(json.JSONDecodeError):
         provider._deserialize_response_payload(payload)
 
