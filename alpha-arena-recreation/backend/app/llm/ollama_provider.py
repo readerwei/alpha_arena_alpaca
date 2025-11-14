@@ -8,6 +8,9 @@ from app.llm.base import BaseLLMProvider
 from app.models import LLMTradeDecision, LLMTradeDecisionList
 from app.config import settings
 
+class ChatUnavailableError(Exception):
+    """Raised when the Ollama chat endpoint is not available for the target model."""
+
 class OllamaProvider(BaseLLMProvider):
     """
     An LLM provider that connects to an Ollama server.
@@ -15,8 +18,28 @@ class OllamaProvider(BaseLLMProvider):
     def __init__(self, model_name: str, url: str):
         super().__init__(model_name)
         self.chat_url = f"{url}/api/chat"
+        self.generate_url = f"{url}/api/generate"
         self.prompt_log_path = settings.PROJECT_ROOT / "logging" / "ollama_prompts.log"
         self.prompt_log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.system_prompt = (
+            "You are an autonomous equity trader. Every response must be valid JSON with the schema: "
+            '{"decisions": [{"symbol": str, "signal": "buy_to_enter"|"sell_to_enter"|"hold"|"close", '
+            '"confidence": float (0–1), "justification": str, "reasoning_trace": str, '
+            '"stop_loss": float|null, "profit_target": float|null, "quantity": float|null, '
+            '"invalidation_condition": str|null, "leverage": int|null, "risk_usd": float|null}]}.\n\n'
+            "When thinking through a cycle:\n"
+            "1. Current Position Review — summarize each open holding (entry price, current price, exit plan, unrealized PnL, conviction) and call out whether exit-plan rules are satisfied.\n"
+            "2. Market Analysis — interpret the provided daily/weekly EMA, MACD, RSI, ATR, and volume for every allowed symbol; highlight opportunities even if you stay flat.\n"
+            "3. Position Management — for held names explain whether to hold/close/add/reverse and cite the exact exit-plan clause or signal; for new trades include quantity, risk_usd, stop_loss, profit_target, and invalidation_condition.\n"
+            "4. Strategic Assessment — outline the broader thesis linking your decisions (momentum, mean reversion, catalysts) and note triggers that would invalidate it.\n"
+            "5. Risk Assessment — describe portfolio-level risk (exposure concentration, cash, drawdown) and ensure every trade has explicit risk controls.\n\n"
+            "Formatting rules:\n"
+            "- Always return {\"decisions\": [...]} with an array; never key by symbol.\n"
+            "- Fill reasoning_trace with the multi-step thought process (signals reviewed, comparisons, risk checks).\n"
+            "- Confidence must be a numeric probability.\n"
+            "- If you skip a symbol, omit it from the array.\n"
+            "- Output raw JSON only (no markdown, prose, or extra keys)."
+        )
 
     async def get_trade_decision(self, prompt: str) -> LLMTradeDecisionList:
         """
@@ -28,6 +51,7 @@ class OllamaProvider(BaseLLMProvider):
         payload = {
             "model": self.model_name,
             "messages": [
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": prompt},
             ],
             "format": "json",
@@ -37,38 +61,19 @@ class OllamaProvider(BaseLLMProvider):
 
         try:
             async with httpx.AsyncClient(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
-                response = await client.post(self.chat_url, json=payload)
-                response.raise_for_status() # Raise an exception for bad status codes
-
                 try:
-                    response_data = response.json()
-                except json.JSONDecodeError as exc:
-                    print(f"Error decoding Ollama HTTP payload: {exc}. Raw: {response.text[:200]}")
-                    return self._get_fallback_decision()
+                    json_content, thinking_trace = await self._execute_chat_request(client, payload)
+                except ChatUnavailableError:
+                    print("Ollama chat endpoint unavailable for this model; falling back to /api/generate.")
+                    json_content, thinking_trace = await self._execute_generate_request(client, prompt)
 
-                api_error = response_data.get("error")
-                if api_error:
-                    print(f"Ollama API returned an error: {api_error}")
-                    return self._get_fallback_decision()
-
-                message_block = response_data.get("message") or {}
-                message_content = message_block.get("content", "")
-                thinking_trace = message_block.get("thinking")
-
-                json_content = self._deserialize_response_payload(message_content)
-                try:
-                    normalized_payload = self._normalize_decisions(json_content)
-                except ValueError as exc:
-                    print(f"Ollama response normalization failed: {exc}")
-                    print("Raw Ollama content:", message_content)
-                    raise
+                normalized_payload = self._normalize_decisions(json_content)
 
                 print("Received response from Ollama:", json_content)
                 if thinking_trace:
                     print("Ollama reasoning trace:", thinking_trace)
                 self._log_response(json_content, thinking_trace)
                 
-                # Validate with Pydantic
                 decisions = LLMTradeDecisionList(**normalized_payload)
                 return decisions
 
@@ -89,6 +94,65 @@ class OllamaProvider(BaseLLMProvider):
         except Exception as e:
             print(f"An unexpected error occurred with Ollama provider: {e}")
             return self._get_fallback_decision()
+
+    async def _execute_chat_request(
+        self, client: httpx.AsyncClient, payload: dict[str, Any]
+    ) -> tuple[dict[str, Any], Optional[str]]:
+        try:
+            response = await client.post(self.chat_url, json=payload)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise ChatUnavailableError from exc
+            raise
+
+        try:
+            response_data = response.json()
+        except json.JSONDecodeError as exc:
+            print(f"Error decoding Ollama HTTP payload: {exc}. Raw: {response.text[:200]}")
+            raise
+
+        api_error = response_data.get("error")
+        if api_error:
+            print(f"Ollama API returned an error: {api_error}")
+            raise RuntimeError(api_error)
+
+        message_block = response_data.get("message") or {}
+        message_content = message_block.get("content", "")
+        thinking_trace = message_block.get("thinking")
+
+        json_content = self._deserialize_response_payload(message_content)
+        return json_content, thinking_trace
+
+    async def _execute_generate_request(
+        self, client: httpx.AsyncClient, prompt: str
+    ) -> tuple[dict[str, Any], Optional[str]]:
+        prefixed_prompt = (
+            f"{self.system_prompt}\n\nUSER PROMPT:\n{prompt}"
+        )
+        payload = {
+            "model": self.model_name,
+            "prompt": prefixed_prompt,
+            "format": "json",
+            "stream": False,
+        }
+        response = await client.post(self.generate_url, json=payload)
+        response.raise_for_status()
+
+        try:
+            response_data = response.json()
+        except json.JSONDecodeError as exc:
+            print(f"Error decoding Ollama HTTP payload (generate): {exc}. Raw: {response.text[:200]}")
+            raise
+
+        api_error = response_data.get("error")
+        if api_error:
+            print(f"Ollama API returned an error: {api_error}")
+            raise RuntimeError(api_error)
+
+        message_content = response_data.get("response", "")
+        json_content = self._deserialize_response_payload(message_content)
+        return json_content, None
 
     def _get_fallback_decision(self) -> LLMTradeDecisionList:
         """Returns a default 'hold' decision in case of an error."""
@@ -160,7 +224,9 @@ class OllamaProvider(BaseLLMProvider):
             ):
                 decisions = payload
             else:
-                raise ValueError("Ollama response missing 'decisions' key.")
+                print("Warning: Ollama response missing 'decisions'; defaulting to no-op decisions.")
+                payload["decisions"] = []
+                return payload
 
         if isinstance(decisions, list):
             return payload
@@ -170,7 +236,11 @@ class OllamaProvider(BaseLLMProvider):
             for symbol, decision_data in decisions.items():
                 if not isinstance(decision_data, dict):
                     continue
-                action = decision_data.get("signal") or decision_data.get("action")
+                action = (
+                    decision_data.get("signal")
+                    or decision_data.get("action")
+                    or decision_data.get("decision")
+                )
                 if not action:
                     continue
                 normalized_list.append(
