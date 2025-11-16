@@ -28,9 +28,9 @@ class Agent:
         self.portfolio = Portfolio(initial_cash=initial_cash)
         self.start_time = time.time()
 
-    async def _generate_prompt(self) -> str:
+    async def _generate_prompt(self) -> tuple[str, list[str]]:
         """
-        Generates the prompt to be sent to the LLM, matching the structure in execution_flow.md.
+        Generates the textual prompt and associated candlestick image attachments for the LLM.
         """
         portfolio_status = await self.portfolio.get_status()
         detailed_market_data = get_detailed_market_data(settings.TRADE_SYMBOLS)
@@ -43,8 +43,15 @@ class Agent:
             "**ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST**\n\n"
         )
         prompt += "**Timeframes note:** Unless stated otherwise in a section title, the series provided below are sampled at **daily intervals**. If a symbol uses a different interval, it is explicitly stated in that symbol’s section.\n\n"
+        prompt += (
+            "**Candlestick visual aid:** Each symbol now includes a PNG candlestick chart covering recent daily candles. "
+            "These are referenced below as Image#<n> placeholders and are attached separately (e.g., via an Ollama `images` array). "
+            "When your runtime supports vision, open the matching attachment and analyze candlestick patterns (engulfing, hammer, doji, inside bar, etc.). "
+            "If you cannot process images, explicitly note that limitation in your reasoning_trace and rely on the numeric series instead.\n\n"
+        )
         prompt += "---\n\n"
         prompt += "### CURRENT MARKET STATE FOR ALL SYMBOLS\n\n"
+        image_attachments: list[str] = []
 
         for symbol, data in detailed_market_data.items():
             prompt += f"### ALL {symbol} DATA\n\n"
@@ -65,6 +72,22 @@ class Agent:
                 f"MACD indicators: {data['longer_term_context']['macd_indicators']}\n\n"
             )
             prompt += f"RSI indicators (14‑Period): {data['longer_term_context']['rsi14_indicators']}\n\n"
+            chart_info = data.get("visuals", {}).get("candlestick_chart")
+            if chart_info and chart_info.get("data_uri"):
+                image_attachments.append(chart_info["data_uri"])
+                image_ref = len(image_attachments)
+                prompt += "**Candlestick chart snapshot:**\n\n"
+                prompt += (
+                    "Use this visual to call out any candlestick formations or price-action structures that support (or contradict) your trade thesis.\n\n"
+                )
+                prompt += (
+                    f"Lookback: {chart_info.get('lookback_bars')} candles covering {chart_info.get('start', 'unknown')} → {chart_info.get('end', 'unknown')} (interval={chart_info.get('interval', '1d')}).\n\n"
+                )
+                prompt += (
+                    f"Image attachment reference: Image#{image_ref} (provided separately in this request).\n\n"
+                )
+            else:
+                prompt += "_Candlestick chart unavailable for this symbol._\n\n"
             prompt += "---\n\n"
 
         prompt += "### HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE\n\n"
@@ -92,10 +115,14 @@ class Agent:
             "or price <= stop_loss—issue the appropriate `close` decision in this cycle. Only keep holding if neither boundary is met.\n\n"
         )
         prompt += (
+            "Explicitly mention in your reasoning which candlestick patterns (if any) you see in the provided charts and how they reinforce or reject your numeric indicator reads. "
+            "If you cannot decode the chart, state that clearly in the reasoning_trace so reviewers understand the limitation.\n\n"
+        )
+        prompt += (
             "You may ONLY issue decisions for the following symbols: "
             f"{', '.join(settings.TRADE_SYMBOLS)}. Ignore any other holdings you might see. "
         )
-        prompt += "Based on the above information, provide a JSON object with a 'decisions' key, containing a list of trade decisions for each symbol you want to trade, hold, or close. "
+        prompt += "Based on the above information, perform full technical analysis (including candlestick-pattern interpretation) and provide a JSON object with a 'decisions' key, containing a list of trade decisions for each symbol you want to trade, hold, or close. "
         prompt += (
             "Each decision in the list should conform to the LLMTradeDecision model, including 'symbol', 'signal' (one of 'buy_to_enter', 'sell_to_enter', 'hold', 'close'), "
             "'confidence', 'justification', 'reasoning_trace', and relevant optional fields like 'stop_loss', 'leverage', 'risk_usd', 'profit_target', 'quantity', and 'invalidation_condition'. "
@@ -119,7 +146,7 @@ class Agent:
             "Never include messages like 'Invalid JSON' or explanations outside the JSON object.\n"
         )
 
-        return prompt
+        return prompt, image_attachments
 
     async def decide_and_trade(self):
         """
@@ -129,9 +156,11 @@ class Agent:
         # await self._check_exit_conditions()
 
         # 2. Generate prompt and get decisions from LLM
-        prompt = await self._generate_prompt()
+        prompt, prompt_images = await self._generate_prompt()
 
-        decision_list = await self.llm_provider.get_trade_decision(prompt)
+        decision_list = await self.llm_provider.get_trade_decision(
+            prompt, prompt_images
+        )
 
         if not decision_list or not decision_list.decisions:
             print(f"Warning: LLM provided no decisions. Skipping trade cycle.")

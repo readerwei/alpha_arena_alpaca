@@ -38,6 +38,15 @@ class Settings:
     )
     _mock_market_flag = os.getenv("USE_MOCK_MARKET_DATA")
     USE_MOCK_MARKET_DATA: bool = _env_flag(_mock_market_flag, default=True)
+    SAVE_CANDLESTICK_CHARTS: bool = _env_flag(
+        os.getenv("SAVE_CANDLESTICK_CHARTS"), default=False
+    )
+    CANDLESTICK_CHARTS_DIR: Path = Path(
+        os.getenv(
+            "CANDLESTICK_CHARTS_DIR",
+            str(PROJECT_ROOT / "logging" / "candlestick_charts"),
+        )
+    )
 
 
 settings = Settings()

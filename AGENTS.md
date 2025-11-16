@@ -40,6 +40,7 @@ USE_MOCK_MARKET_DATA=true   # set false to pull from yfinance
 - `LLM_PROVIDER` should remain `mock` unless you have an Ollama instance running at `OLLAMA_URL`. When using Ollama the backend writes every prompt/response (plus the model’s reasoning trace) to `alpha-arena-recreation/backend/logging/ollama_prompts.log` for post-mortems.
 - `USE_MOCK_ALPACA` defaults to `true` so you can run the engine offline; set it to `false` (with valid keys) for live paper trading.
 - `USE_MOCK_MARKET_DATA` avoids yfinance calls in sandboxed environments; turn it off once you have network access.
+- **Never modify `.env` files without explicit user permission.** Treat every env file as sensitive secrets storage; read-only unless the user directs otherwise.
 
 ## Backend Workflow & Commands
 All commands below assume the working directory `alpha-arena-recreation/backend`.

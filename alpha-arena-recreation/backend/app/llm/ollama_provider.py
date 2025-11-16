@@ -41,18 +41,25 @@ class OllamaProvider(BaseLLMProvider):
             "- Output raw JSON only (no markdown, prose, or extra keys)."
         )
 
-    async def get_trade_decision(self, prompt: str) -> LLMTradeDecisionList:
+    async def get_trade_decision(
+        self, prompt: str, images: Optional[list[str]] = None
+    ) -> LLMTradeDecisionList:
         """
         Sends the prompt to the Ollama server and gets a trade decision.
         """
         print(f"Sending prompt to Ollama model: {self.model_name} at {self.chat_url}")
-        self._log_prompt(prompt)
-        
+        attachments = images or []
+        self._log_prompt(prompt, attachments)
+
+        user_message: dict[str, Any] = {"role": "user", "content": prompt}
+        if attachments:
+            user_message["images"] = attachments
+
         payload = {
             "model": self.model_name,
             "messages": [
                 {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt},
+                user_message,
             ],
             "format": "json",
             "stream": False,  # Request a single response payload
@@ -65,7 +72,9 @@ class OllamaProvider(BaseLLMProvider):
                     json_content, thinking_trace = await self._execute_chat_request(client, payload)
                 except ChatUnavailableError:
                     print("Ollama chat endpoint unavailable for this model; falling back to /api/generate.")
-                    json_content, thinking_trace = await self._execute_generate_request(client, prompt)
+                    json_content, thinking_trace = await self._execute_generate_request(
+                        client, prompt, attachments
+                    )
 
                 normalized_payload = self._normalize_decisions(json_content)
 
@@ -125,7 +134,10 @@ class OllamaProvider(BaseLLMProvider):
         return json_content, thinking_trace
 
     async def _execute_generate_request(
-        self, client: httpx.AsyncClient, prompt: str
+        self,
+        client: httpx.AsyncClient,
+        prompt: str,
+        images: Optional[list[str]] = None,
     ) -> tuple[dict[str, Any], Optional[str]]:
         prefixed_prompt = (
             f"{self.system_prompt}\n\nUSER PROMPT:\n{prompt}"
@@ -136,6 +148,8 @@ class OllamaProvider(BaseLLMProvider):
             "format": "json",
             "stream": False,
         }
+        if images:
+            payload["images"] = images
         response = await client.post(self.generate_url, json=payload)
         response.raise_for_status()
 
@@ -197,9 +211,13 @@ class OllamaProvider(BaseLLMProvider):
 
         return json.loads(candidate)
 
-    def _log_prompt(self, prompt: str) -> None:
+    def _log_prompt(self, prompt: str, images: Optional[list[str]] = None) -> None:
         """Append the outgoing prompt to the log file."""
-        self._append_log_entry("PROMPT", prompt)
+        if images:
+            attachment_note = f"\n\n[Attached {len(images)} image(s) sent separately to Ollama]"
+        else:
+            attachment_note = ""
+        self._append_log_entry("PROMPT", f"{prompt}{attachment_note}")
 
     def _log_response(self, payload: dict[str, Any], thinking: Optional[str] = None) -> None:
         """Append the parsed response (and optional reasoning trace) to the log file."""

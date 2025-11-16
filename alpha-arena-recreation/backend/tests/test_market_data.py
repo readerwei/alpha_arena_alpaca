@@ -1,6 +1,12 @@
 import numpy as np
 import pandas as pd
 import pytest
+import sys
+from pathlib import Path
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.config import settings
 from app.data import market_data
@@ -25,6 +31,7 @@ def _build_mock_history(rows: int = 120) -> pd.DataFrame:
 
 def test_get_detailed_market_data_builds_expected_sections(monkeypatch):
     monkeypatch.setattr(settings, "USE_MOCK_MARKET_DATA", False)
+    monkeypatch.setattr(settings, "SAVE_CANDLESTICK_CHARTS", False)
     mock_df = _build_mock_history()
 
     def fake_download(*args, **kwargs):
@@ -39,6 +46,7 @@ def test_get_detailed_market_data_builds_expected_sections(monkeypatch):
     current = test_data["current"]
     intraday = test_data["intraday_series"]
     longer = test_data["longer_term_context"]
+    visuals = test_data["visuals"]["candlestick_chart"]
 
     assert current["current_price"] == pytest.approx(mock_df["Close"].iloc[-1])
     assert isinstance(current["current_ema20"], float)
@@ -55,6 +63,11 @@ def test_get_detailed_market_data_builds_expected_sections(monkeypatch):
     assert isinstance(longer["ema50"], float)
     assert isinstance(longer["atr3"], float)
     assert isinstance(longer["atr14"], float)
+    assert visuals["data_uri"].startswith("data:image/png;base64,")
+    assert visuals["lookback_bars"] > 0
+    assert visuals["interval"] == "1d"
+    assert "saved_path" in visuals
+    assert visuals["saved_path"] is None
 
 
 def test_get_current_prices_uses_regular_price_and_history(monkeypatch):

@@ -13,7 +13,7 @@ from app.trading_engine.agent import Agent
 
 
 class DummyProvider(BaseLLMProvider):
-    async def get_trade_decision(self, prompt: str):
+    async def get_trade_decision(self, prompt: str, images=None):
         raise NotImplementedError
 
 

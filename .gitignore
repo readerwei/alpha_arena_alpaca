@@ -131,6 +131,7 @@ Thumbs.db
 *.log
 logs/
 exit_plans.csv
+alpha-arena-recreation/backend/logging/
 
 # Temporary files
 *.tmp

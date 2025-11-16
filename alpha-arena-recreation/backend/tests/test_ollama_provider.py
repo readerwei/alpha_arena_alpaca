@@ -77,10 +77,13 @@ def test_real_ollama_provider_returns_decisions():
     provider = OllamaProvider(model_name=model, url=url)
 
     prompt = (
-        "Return strictly valid JSON matching this schema: {\"decisions\": "
-        "[{\"symbol\": \"AAPL\", \"signal\": \"hold\", \"confidence\": 0.5, "
-        "\"justification\": \"string\"}]}. "
-        "Do not include any additional text or markdown fences."
+        "### CURRENT MARKET STATE\n"
+        "Symbol: AAPL\n"
+        "current_price = 100, current_ema20 = 99, current_macd = 1, current_rsi (7 period) = 55\n"
+        "### HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE\n"
+        "Available Cash: 10000\n"
+        "Sharpe Ratio: 0.5\n"
+        "Provide exactly one hold decision for AAPL referencing this minimal dataset."
     )
 
     decisions = asyncio.run(provider.get_trade_decision(prompt))

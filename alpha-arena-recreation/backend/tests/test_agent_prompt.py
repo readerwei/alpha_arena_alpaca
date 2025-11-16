@@ -20,7 +20,7 @@ from app.config import settings
 
 
 class DummyProvider(BaseLLMProvider):
-    async def get_trade_decision(self, prompt: str):
+    async def get_trade_decision(self, prompt: str, images=None):
         raise NotImplementedError
 
 
@@ -104,6 +104,16 @@ def test_generate_prompt_includes_market_and_portfolio_sections(monkeypatch):
                 "macd_indicators": [10, 11],
                 "rsi14_indicators": [45, 47],
             },
+            "visuals": {
+                "candlestick_chart": {
+                    "data_uri": "data:image/png;base64,FAKECHARTDATA",
+                    "lookback_bars": 5,
+                    "start": "2024-01-01T00:00:00",
+                    "end": "2024-01-05T00:00:00",
+                    "interval": "1d",
+                    "saved_path": None,
+                }
+            },
         }
     }
 
@@ -118,7 +128,7 @@ def test_generate_prompt_includes_market_and_portfolio_sections(monkeypatch):
     agent.portfolio = stub_portfolio
     agent.start_time -= 600  # ensure elapsed_minutes > 0
 
-    prompt = asyncio.run(agent._generate_prompt())
+    prompt, prompt_images = asyncio.run(agent._generate_prompt())
 
     assert "### ALL BTC DATA" in prompt
     assert "current_price = 45000.0" in prompt
@@ -129,6 +139,10 @@ def test_generate_prompt_includes_market_and_portfolio_sections(monkeypatch):
     assert "'reasoning_trace'" in prompt
     assert "MUST always be a JSON array" in prompt
     assert "Example response:" in prompt
+    assert "Candlestick visual aid" in prompt
+    assert "Candlestick chart snapshot" in prompt
+    assert "Image#1" in prompt
+    assert prompt_images == ["data:image/png;base64,FAKECHARTDATA"]
 
 
 def run_exit_condition_tests() -> int:

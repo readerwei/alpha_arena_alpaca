@@ -8,7 +8,9 @@ class MockLLMProvider(BaseLLMProvider):
     """
     A mock LLM provider that returns random trade decisions for testing.
     """
-    async def get_trade_decision(self, prompt: str) -> LLMTradeDecisionList:
+    async def get_trade_decision(
+        self, prompt: str, images: list[str] | None = None
+    ) -> LLMTradeDecisionList:
         """
         Ignores the prompt and returns a randomized trade decision in a list.
         """
