@@ -32,6 +32,9 @@ LOOP_INTERVAL_SECONDS=300    # optional override via code if needed
 EXIT_PLAN_CSV_PATH=exit_plans.csv  # optional: persistent store for exit plans
 USE_MOCK_ALPACA=true        # set false to hit the real Alpaca API
 USE_MOCK_MARKET_DATA=true   # set false to pull from yfinance
+MARKET_OPEN_HOUR=8          # hour (24h) when the trading loop may start running
+MARKET_CLOSE_HOUR=16        # hour (24h) when the trading loop must pause
+MARKET_TIMEZONE=America/New_York  # IANA tz applied to the schedule above
 ```
 - The Alpaca client is instantiated at import time; missing keys raise immediately (`app/alpaca/client.py`). Set valid paper keys before starting anything.
 - When `LLM_PROVIDER=ollama`, make sure the referenced model is pulled and the server reachable; otherwise stick with `mock` during development.
@@ -72,6 +75,7 @@ python debug_engine.py
 ## Execution Flow (what the engine actually does)
 1. **Startup** (`TradingEngine.__init__`): builds one or more `Agent` instances based on `LLM_PROVIDER`. Ollama mode registers a single named agent; mock mode registers two preconfigured mocks.
 2. **Loop** (`engine.run_trading_loop`): every `settings.LOOP_INTERVAL_SECONDS`, gather all agents’ `decide_and_trade()` coroutines concurrently.
+   - The loop now sleeps outside configured market hours (default 8AM–4PM America/New_York) and all day during weekends, so nothing executes when markets are closed. Adjust the env vars above to change this window.
 3. **Prompt assembly** (`Agent._generate_prompt`): 
    - Pull Alpaca-backed portfolio status (cash, `PositionDetails`, Sharpe computation).
    - Fetch enriched market context from `app/data/market_data.py`. “Intraday” series are daily bars; longer-term context is resampled weekly so EMA/MACD/RSI/ATR reflect multi-week trends.

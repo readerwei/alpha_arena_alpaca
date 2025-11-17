@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
 from typing import Literal
 
@@ -26,7 +27,7 @@ class Settings:
     TRADE_SYMBOLS: list[str] = ["AAPL", "NVDA", "AMD", "AMZN", "ABNB"]
     
     # Trading loop interval in seconds
-    LOOP_INTERVAL_SECONDS: int = 300  # 5 minutes
+    LOOP_INTERVAL_SECONDS: int = 3600  # 60 minutes
 
     # LLM Provider Settings
     LLM_PROVIDER: Literal["mock", "ollama"] = os.getenv("LLM_PROVIDER", "mock") # 'mock' or 'ollama'
@@ -38,6 +39,13 @@ class Settings:
     )
     _mock_market_flag = os.getenv("USE_MOCK_MARKET_DATA")
     USE_MOCK_MARKET_DATA: bool = _env_flag(_mock_market_flag, default=True)
+    MARKET_OPEN_HOUR: int = int(os.getenv("MARKET_OPEN_HOUR", "8"))
+    MARKET_CLOSE_HOUR: int = int(os.getenv("MARKET_CLOSE_HOUR", "16"))
+    MARKET_TIMEZONE: str = os.getenv("MARKET_TIMEZONE", "America/New_York")
+    try:
+        MARKET_ZONEINFO: ZoneInfo = ZoneInfo(MARKET_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        MARKET_ZONEINFO = ZoneInfo("UTC")
 
 
 settings = Settings()
