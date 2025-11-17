@@ -82,6 +82,9 @@ class Portfolio:
                     print(
                         f"Alpaca SELL order submitted for {quantity} of {symbol}. Order ID: {order.id}"
                     )
+                    if exit_plan:
+                        self.exit_plans[symbol] = exit_plan
+                        self.exit_plan_store.save(self.exit_plans)
                     self._update_local_position(
                         symbol=symbol,
                         action="SELL",
