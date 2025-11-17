@@ -1,3 +1,4 @@
+import base64
 import httpx
 import json
 from datetime import datetime
@@ -47,34 +48,67 @@ class OllamaProvider(BaseLLMProvider):
         """
         Sends the prompt to the Ollama server and gets a trade decision.
         """
-        print(f"Sending prompt to Ollama model: {self.model_name} at {self.chat_url}")
         attachments = images or []
         self._log_prompt(prompt, attachments)
+        encoded_images = self._prepare_image_payloads(attachments)
 
-        user_message: dict[str, Any] = {"role": "user", "content": prompt}
-        if attachments:
-            user_message["images"] = attachments
+        if attachments and not encoded_images:
+            print(
+                "Warning: Image attachments were provided but could not be prepared "
+                "for Ollama; continuing without them."
+            )
 
-        payload = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                user_message,
-            ],
-            "format": "json",
-            "stream": False,  # Request a single response payload
-            "think": True,  # Capture reasoning traces if the model emits them
-        }
+        print(f"Sending prompt to Ollama model: {self.model_name} at {self.chat_url}")
+        if encoded_images:
+            print(
+                f"Including {len(encoded_images)} candlestick image attachment(s) "
+                "in chat payload."
+            )
 
         try:
             async with httpx.AsyncClient(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
-                try:
-                    json_content, thinking_trace = await self._execute_chat_request(client, payload)
-                except ChatUnavailableError:
-                    print("Ollama chat endpoint unavailable for this model; falling back to /api/generate.")
-                    json_content, thinking_trace = await self._execute_generate_request(
-                        client, prompt, attachments
+
+                async def _dispatch_request(image_payload: list[str]) -> tuple[dict[str, Any], Optional[str]]:
+                    user_message: dict[str, Any] = {"role": "user", "content": prompt}
+                    if image_payload:
+                        user_message["images"] = image_payload
+
+                    payload = {
+                        "model": self.model_name,
+                        "messages": [
+                            {"role": "system", "content": self.system_prompt},
+                            user_message,
+                        ],
+                        "format": "json",
+                        "stream": False,  # Request a single response payload
+                        "think": True,  # Capture reasoning traces if the model emits them
+                    }
+
+                    try:
+                        return await self._execute_chat_request(client, payload)
+                    except ChatUnavailableError:
+                        print(
+                            "Ollama chat endpoint unavailable for this model; "
+                            "falling back to /api/generate."
+                        )
+                    except httpx.HTTPStatusError as exc:
+                        self._log_chat_http_error(exc)
+
+                    return await self._execute_generate_request(
+                        client, prompt, image_payload
                     )
+
+                try:
+                    json_content, thinking_trace = await _dispatch_request(encoded_images)
+                except json.JSONDecodeError:
+                    if encoded_images:
+                        print(
+                            "Warning: Ollama response was empty or invalid when images were attached; "
+                            "retrying without image attachments."
+                        )
+                        json_content, thinking_trace = await _dispatch_request([])
+                    else:
+                        raise
 
                 normalized_payload = self._normalize_decisions(json_content)
 
@@ -210,6 +244,40 @@ class OllamaProvider(BaseLLMProvider):
             raise json.JSONDecodeError("Ollama reported invalid JSON output.", candidate, 0)
 
         return json.loads(candidate)
+
+    def _prepare_image_payloads(self, attachments: list[str]) -> list[str]:
+        prepared: list[str] = []
+        for attachment in attachments:
+            if not attachment:
+                continue
+            if attachment.startswith("data:"):
+                comma_index = attachment.find(",")
+                if comma_index != -1:
+                    prepared.append(attachment[comma_index + 1 :])
+                    continue
+            potential_path = Path(attachment)
+            if potential_path.exists():
+                try:
+                    encoded = base64.b64encode(potential_path.read_bytes()).decode("ascii")
+                    prepared.append(encoded)
+                except OSError as exc:
+                    print(f"Warning: Failed to read image attachment {potential_path}: {exc}")
+                continue
+            prepared.append(attachment)
+        return prepared
+
+    def _log_chat_http_error(self, exc: httpx.HTTPStatusError) -> None:
+        status = exc.response.status_code if exc.response else "unknown"
+        preview = ""
+        if exc.response is not None:
+            try:
+                preview = exc.response.text[:200]
+            except Exception:
+                preview = "<unavailable>"
+        print(
+            "Ollama chat request failed with HTTP "
+            f"{status}. Response preview: {preview}"
+        )
 
     def _log_prompt(self, prompt: str, images: Optional[list[str]] = None) -> None:
         """Append the outgoing prompt to the log file."""
