@@ -13,6 +13,7 @@ class TradingEngine:
         self.is_running = False
         self.market_open_time = time(hour=settings.MARKET_OPEN_HOUR)
         self.market_close_time = time(hour=settings.MARKET_CLOSE_HOUR)
+        self._loop_task: asyncio.Task | None = None
 
     def _initialize_agents(self):
         """
@@ -54,32 +55,46 @@ class TradingEngine:
         except Exception as e:
             print(f"Error during trading cycle for agent {agent.name}: {e}")
 
+    def ensure_trading_loop(self) -> None:
+        """
+        Starts the trading loop if it is not already running.
+        """
+        if self._loop_task and not self._loop_task.done():
+            print("Trading loop already running; ignoring duplicate start request.")
+            return
+        self._loop_task = asyncio.create_task(self.run_trading_loop())
+
     async def run_trading_loop(self):
         """
         The main trading loop that runs periodically.
         """
         self.is_running = True
         print("Trading engine started. Running trading loop...")
-        while self.is_running:
-            now = datetime.now(settings.MARKET_ZONEINFO)
-            if not self._is_market_open(now):
-                sleep_seconds = self._seconds_until_next_open(now)
+        try:
+            while self.is_running:
+                now = datetime.now(settings.MARKET_ZONEINFO)
+                if not self._is_market_open(now):
+                    sleep_seconds = self._seconds_until_next_open(now)
+                    print(
+                        "Market is closed. Sleeping for "
+                        f"{sleep_seconds:.0f} seconds until next window."
+                    )
+                    await asyncio.sleep(sleep_seconds)
+                    continue
                 print(
-                    "Market is closed. Sleeping for "
-                    f"{sleep_seconds:.0f} seconds until next window."
+                    f"--- New trading cycle started at {asyncio.get_event_loop().time():.2f} ---"
                 )
-                await asyncio.sleep(sleep_seconds)
-                continue
-            print(
-                f"--- New trading cycle started at {asyncio.get_event_loop().time():.2f} ---"
-            )
 
-            # Run all agents concurrently
-            await asyncio.gather(
-                *(self._run_agent_cycle(agent) for agent in self.agents)
-            )
+                # Run all agents concurrently
+                await asyncio.gather(
+                    *(self._run_agent_cycle(agent) for agent in self.agents)
+                )
 
-            await asyncio.sleep(settings.LOOP_INTERVAL_SECONDS)
+                await asyncio.sleep(settings.LOOP_INTERVAL_SECONDS)
+        finally:
+            self.is_running = False
+            self._loop_task = None
+            print("Trading engine loop stopped.")
 
     def stop_trading_loop(self):
         """

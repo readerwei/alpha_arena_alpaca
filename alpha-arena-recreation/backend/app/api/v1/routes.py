@@ -10,7 +10,7 @@ router = APIRouter()
 @router.on_event("startup")
 async def startup_event():
     # Start the trading loop in the background
-    asyncio.create_task(engine.run_trading_loop())
+    engine.ensure_trading_loop()
 
 
 @router.on_event("shutdown")
