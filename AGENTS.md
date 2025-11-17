@@ -69,6 +69,7 @@ python debug_engine.py
 ### Tests / lint
 - `pytest` exercises backend units (`alpha-arena-recreation/backend/tests`).
 - Still run `python debug_engine.py` and hit `/api/v1/agents` for smoke coverage after heavy changes.
+- When running `pytest -m integration`, the Ollama provider integration test renders a throwaway candlestick PNG (requires matplotlib, already in `requirements.txt`) and attaches it to the real Ollama request. Set `OLLAMA_TEST_URL`/`OLLAMA_TEST_MODEL` first or the test will be skipped.
 
 ## Execution Flow (what the engine actually does)
 1. **Startup** (`TradingEngine.__init__`): builds one or more `Agent` instances based on `LLM_PROVIDER`. Ollama mode registers a single named agent; mock mode registers two preconfigured mocks.
