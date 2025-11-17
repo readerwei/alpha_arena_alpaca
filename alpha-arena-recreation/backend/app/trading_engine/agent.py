@@ -20,12 +20,13 @@ class Agent:
         agent_id: str,
         name: str,
         llm_provider: BaseLLMProvider,
-        initial_cash: float = 10000.0,
+        initial_cash: float | None = None,
     ):
         self.agent_id = agent_id
         self.name = name
         self.llm_provider = llm_provider
-        self.portfolio = Portfolio(initial_cash=initial_cash)
+        cash_seed = settings.INITIAL_CASH if initial_cash is None else initial_cash
+        self.portfolio = Portfolio(initial_cash=cash_seed)
         self.start_time = time.time()
 
     async def _generate_prompt(self) -> str:

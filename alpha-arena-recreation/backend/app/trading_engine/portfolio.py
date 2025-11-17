@@ -8,16 +8,18 @@ from app.alpaca.client import alpaca_client
 from app.data.market_data import get_current_prices
 from app.models import ExitPlan, PortfolioStatus, Position, PositionDetails, Trade
 from app.storage.exit_plan_store import ExitPlanStore
+from app.config import settings
 
 
 class Portfolio:
     def __init__(
         self,
-        initial_cash: float = 10000.0,
+        initial_cash: float | None = None,
         exit_plan_store: Optional[ExitPlanStore] = None,
     ):
-        self.initial_cash = initial_cash
-        self.cash = initial_cash  # This will eventually come from Alpaca account
+        cash_seed = settings.INITIAL_CASH if initial_cash is None else initial_cash
+        self.initial_cash = cash_seed
+        self.cash = cash_seed  # This will eventually come from Alpaca account
         self.trade_history: list[Trade] = []
         self.pnl_history = [0.0]  # To calculate Sharpe Ratio
         self.exit_plan_store = exit_plan_store or ExitPlanStore()

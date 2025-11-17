@@ -56,6 +56,7 @@ This project is a simulation of LLM-powered autonomous trading agents, designed 
     MARKET_OPEN_HOUR=8           # 24h clock hour market trading may start
     MARKET_CLOSE_HOUR=16         # hour trading must pause
     MARKET_TIMEZONE=America/New_York
+    INITIAL_CASH=100000          # seed cash per agent portfolio
     ```
     Adjust timeouts, exit-plan CSV paths, or symbol lists as needed. When hitting a real Alpaca account, ensure valid paper credentials exist before importing `app.alpaca.client`.
 

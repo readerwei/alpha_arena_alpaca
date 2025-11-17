@@ -46,6 +46,7 @@ class Settings:
         MARKET_ZONEINFO: ZoneInfo = ZoneInfo(MARKET_TIMEZONE)
     except ZoneInfoNotFoundError:
         MARKET_ZONEINFO = ZoneInfo("UTC")
+    INITIAL_CASH: float = float(os.getenv("INITIAL_CASH", "100000"))
 
 
 settings = Settings()

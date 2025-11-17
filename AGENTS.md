@@ -35,6 +35,7 @@ USE_MOCK_MARKET_DATA=true   # set false to pull from yfinance
 MARKET_OPEN_HOUR=8          # hour (24h) when the trading loop may start running
 MARKET_CLOSE_HOUR=16        # hour (24h) when the trading loop must pause
 MARKET_TIMEZONE=America/New_York  # IANA tz applied to the schedule above
+INITIAL_CASH=100000         # seed balance for each agent portfolio (USD)
 ```
 - The Alpaca client is instantiated at import time; missing keys raise immediately (`app/alpaca/client.py`). Set valid paper keys before starting anything.
 - When `LLM_PROVIDER=ollama`, make sure the referenced model is pulled and the server reachable; otherwise stick with `mock` during development.
