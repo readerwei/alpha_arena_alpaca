@@ -11,7 +11,7 @@ This project is a simulation of LLM-powered autonomous trading agents, designed 
     *   **Frontend**: Placeholder React app (not yet implemented) slated to visualize agent performance and trace decision rationales.
 
 *   **Core Logic**:
-*   The backend runs a **Trading Engine** in a continuous loop.
+*   The backend runs a **Trading Engine** in a continuous loop, but it is market-aware: cycles only run on weekdays between `MARKET_OPEN_HOUR` and `MARKET_CLOSE_HOUR` (defaults 8AM–4PM `MARKET_TIMEZONE`) and the loop sleeps outside that window.
 *   In each cycle, the engine fetches either:
     *   **Live** quotes/indicator data via yfinance (when `USE_MOCK_MARKET_DATA=false`), or
     *   **Deterministic mock** data (when `USE_MOCK_MARKET_DATA=true`) so you can test offline.
@@ -52,6 +52,10 @@ This project is a simulation of LLM-powered autonomous trading agents, designed 
     USE_MOCK_ALPACA=true         # flip to false for live paper trading
     USE_MOCK_MARKET_DATA=true    # flip to false for yfinance data
     TRADE_SYMBOLS=AAPL,NVDA,AMD  # symbols the LLM is allowed to trade
+    LOOP_INTERVAL_SECONDS=300    # cadence between trading cycles
+    MARKET_OPEN_HOUR=8           # 24h clock hour market trading may start
+    MARKET_CLOSE_HOUR=16         # hour trading must pause
+    MARKET_TIMEZONE=America/New_York
     ```
     Adjust timeouts, exit-plan CSV paths, or symbol lists as needed. When hitting a real Alpaca account, ensure valid paper credentials exist before importing `app.alpaca.client`.
 
